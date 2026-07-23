@@ -1,9 +1,10 @@
-const CACHE_NAME = "mileage-logger-private-sta-required-backup-v7";
+const CACHE_NAME = "mileage-logger-inspection-database-v13";
 const APP_FILES = [
   "./",
   "./index.html",
   "./styles.css",
-  "./app.js",
+  "./app.js?v=inspection-handoff-1",
+  "./inspections.js?v=trip-prompt-2",
   "./vendor/pdf-lib.min.js",
   "./manifest.webmanifest",
   "./icons/icon-192.png",
@@ -43,3 +44,4 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
+
