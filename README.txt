@@ -32,6 +32,11 @@ WHAT THE FULL BACKUP CONTAINS
 
 The private STA master PDF is intentionally not included. Keep the original master PDF separately in Files.
 
+PHOTOS IN FULL BACKUPS
+----------------------
+Photos in new full ZIP backups use normal .jpg, .png, .webp, or .heic filenames.
+They can be opened directly on a computer after the ZIP is extracted. Older backups containing .bin photo files remain fully restorable.
+
 BACKUP FILE NAME
 ----------------
 Example:
@@ -47,6 +52,27 @@ Older JSON backups remain supported. They restore the app data and leave existin
 CSV
 ---
 CSV is a readable spreadsheet copy but is not the complete restore file. Use the ZIP file as the required backup.
+
+INSPECTION PACKAGES
+-------------------
+Open Inspection History and tap Export Package on an inspection record.
+The computer-friendly ZIP contains:
+- A printable PDF inspection report
+- An editable Word inspection report
+- A plain-text inspection update
+- An Excel-readable CSV data file
+- An HTML photo index
+- A Photos folder with normal image filenames
+
+Inspection packages are for reporting and recordkeeping. They do not replace the required full restore backup.
+
+PRIVATE S&B WORD REPORT TEMPLATE
+--------------------------------
+Open Inspections and use Import S&B Word Template.
+Choose the approved blank S&B inspection report in .docx format.
+The template is stored only in this browser on this device and is not uploaded to GitHub or included in backups.
+When installed, Export Package uses the S&B layout for the editable Word report and inserts available inspection data plus up to four attached photos.
+Keep the original blank S&B template safely in Files because clearing website data or removing the web app can remove the private imported copy.
 
 TRIP LOG CORRECTIONS
 --------------------
