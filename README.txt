@@ -88,6 +88,8 @@ Keep the original blank S&B template safely in Files because clearing website da
 
 TRIP LOG CORRECTIONS
 --------------------
+While a trip is active, tap Edit Trip Info to correct the customer/client, vendor or destination, project number, purpose, or notes. GPS tracking, photos, start time, and the starting odometer are not changed.
+
 Open View Log and tap Edit beside a saved trip. Customer, vendor, project, purpose, date, times, odometers, and notes can be corrected.
 Mileage is recalculated. Original GPS locations and route points are preserved. Linked inspection records are updated.
 
