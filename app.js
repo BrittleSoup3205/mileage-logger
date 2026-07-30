@@ -509,11 +509,33 @@
           <div class="detail"><span>Notes</span><strong>${escapeHTML(trip.notes || "—")}</strong></div>
         </div>
         <div class="active-controls">
+          <button id="editActiveTripBtn" class="button button-secondary button-small" type="button">Edit Trip Info</button>
           <button id="createStaBtn" class="button button-primary button-small" type="button">Create STA</button>
           ${trip.startLocation ? `<a class="button button-secondary button-small" href="${mapLink(trip.startLocation, "Trip Start")}" target="_blank" rel="noopener">Open Start Map</a>` : ""}
           ${trip.trackRoute && routeWatchId === null ? `<button id="resumeRouteBtn" class="button button-secondary button-small" type="button">Resume Route GPS</button>` : ""}
           ${trip.trackRoute && routeWatchId !== null ? `<button id="pauseRouteBtn" class="button button-secondary button-small" type="button">Pause Route GPS</button>` : ""}
         </div>
+        <section id="activeTripEditPanel" class="active-trip-edit-panel hidden" aria-labelledby="activeTripEditTitle">
+          <div class="active-trip-photo-heading">
+            <div>
+              <span>GPS, photos, start time, and odometer remain unchanged</span>
+              <h3 id="activeTripEditTitle">Edit Active Trip Info</h3>
+            </div>
+          </div>
+          <form id="activeTripEditForm" autocomplete="off">
+            <div class="active-trip-edit-grid">
+              <label>Customer / client<input id="activeTripEditCustomer" list="customerList" value="${escapeHTML(trip.customer)}" required></label>
+              <label>Vendor / destination<input id="activeTripEditVendor" list="vendorList" value="${escapeHTML(trip.vendor)}" required></label>
+              <label>Project number<input id="activeTripEditProject" value="${escapeHTML(trip.projectNumber || "")}"></label>
+              <label class="full">Purpose<input id="activeTripEditPurpose" list="purposeList" value="${escapeHTML(trip.purpose)}" required></label>
+              <label class="full">Notes<textarea id="activeTripEditNotes" rows="3">${escapeHTML(trip.notes || "")}</textarea></label>
+            </div>
+            <div class="form-actions wrap">
+              <button class="button button-primary button-small" type="submit">Save Changes</button>
+              <button id="cancelActiveTripEditBtn" class="button button-secondary button-small" type="button">Cancel</button>
+            </div>
+          </form>
+        </section>
         <section class="active-trip-photo-panel" aria-labelledby="activeTripPhotoTitle">
           <div class="active-trip-photo-heading">
             <div>
@@ -566,6 +588,34 @@
     if (state.settings.autoCaptureGps) {
       setTimeout(() => captureStartGps(false), 120);
     }
+  }
+
+  function saveActiveTripEdits() {
+    if (!state.activeTrip) {
+      window.alert("There is no active trip to edit.");
+      return;
+    }
+    const customer = $("activeTripEditCustomer")?.value.trim() || "";
+    const vendor = $("activeTripEditVendor")?.value.trim() || "";
+    const purpose = $("activeTripEditPurpose")?.value.trim() || "";
+    if (!customer || !vendor || !purpose) {
+      window.alert("Customer, vendor or destination, and purpose are required.");
+      return;
+    }
+    Object.assign(state.activeTrip, {
+      customer,
+      vendor,
+      projectNumber: $("activeTripEditProject")?.value.trim() || "",
+      purpose,
+      notes: $("activeTripEditNotes")?.value.trim() || "",
+      modifiedISO: new Date().toISOString()
+    });
+    state.settings.customers = [...new Set([...state.settings.customers, customer])];
+    state.settings.vendors = [...new Set([...state.settings.vendors, vendor])];
+    state.settings.purposes = [...new Set([...state.settings.purposes, purpose])];
+    saveState();
+    renderAll();
+    showToast("Active trip information updated.");
   }
 
   function prepareEndForm() {
@@ -2173,6 +2223,16 @@ ${fallbackError.message || error.message}`);
   });
 
   $("activeDetails").addEventListener("click", async (event) => {
+    if (event.target.closest("#editActiveTripBtn")) {
+      $("activeTripEditPanel")?.classList.remove("hidden");
+      $("activeTripEditCustomer")?.focus();
+      return;
+    }
+    if (event.target.closest("#cancelActiveTripEditBtn")) {
+      $("activeTripEditPanel")?.classList.add("hidden");
+      return;
+    }
+
     const photoAction = event.target.closest("[data-active-trip-photo-action]");
     if (photoAction?.dataset.activeTripPhotoAction === "take") {
       $("activeTripTakePhotoInput")?.click();
@@ -2211,6 +2271,12 @@ ${fallbackError.message || error.message}`);
     if (event.target.closest("#pauseRouteBtn")) {
       stopRouteTracking(true);
     }
+  });
+
+  $("activeDetails").addEventListener("submit", (event) => {
+    if (event.target.id !== "activeTripEditForm") return;
+    event.preventDefault();
+    saveActiveTripEdits();
   });
 
   $("activeDetails").addEventListener("change", (event) => {
