@@ -1,11 +1,11 @@
-const CACHE_NAME = "mileage-logger-inspection-handoff-v28";
+const CACHE_NAME = "mileage-logger-inspection-batch-active-edit-v29";
 const APP_FILES = [
   "./",
   "./index.html",
-  "./styles.css",
-  "./app.js?v=inspection-handoff-1",
-  "./inspections.js?v=inspection-handoff-1",
-  "./media-store.js?v=inspection-handoff-1",
+  "./styles.css?v=inspection-batch-active-edit-1",
+  "./app.js?v=inspection-batch-active-edit-1",
+  "./inspections.js?v=inspection-batch-active-edit-1",
+  "./media-store.js?v=inspection-batch-active-edit-1",
   "./vendor/pdf-lib.min.js",
   "./vendor/fflate.min.js",
   "./manifest.webmanifest",
