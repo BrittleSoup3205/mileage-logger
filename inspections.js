@@ -22,6 +22,7 @@
   let photoObjectUrls = [];
   let inspectionListObjectUrls = [];
   let activeView = "inspections";
+  const selectedInspectionIds = new Set();
   let lastStateSignature = "";
   let inspectionTemplateInstalled = false;
 
@@ -475,6 +476,16 @@
       .inspection-record { padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: color-mix(in srgb, var(--card), var(--bg) 28%); }
       .inspection-record-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
       .inspection-record-heading h3 { margin: 2px 0 4px; }
+      .inspection-record-select { display: flex; align-items: flex-start; gap: 10px; }
+      .inspection-record-select input { width: auto; margin-top: 4px; }
+      .inspection-record-pills { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; }
+      .inspection-backup-current { color: var(--success); border-color: var(--success); }
+      .inspection-backup-pending { color: var(--warning); border-color: var(--warning); }
+      .inspection-backup-never { color: var(--muted); }
+      .inspection-batch-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 13px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--card), var(--bg) 28%); }
+      .inspection-batch-toolbar label { display: flex; align-items: center; gap: 8px; margin: 0; }
+      .inspection-batch-toolbar input { width: auto; }
+      .inspection-batch-count { color: var(--muted); font-size: .9rem; }
       .inspection-meta { display: flex; flex-wrap: wrap; gap: 7px 12px; margin: 9px 0; color: var(--muted); font-size: .88rem; }
       .inspection-summary { margin: 10px 0; line-height: 1.45; white-space: pre-wrap; }
       .inspection-record-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 11px; }
@@ -594,6 +605,12 @@
         <div class="inspection-handoff-note">
           <strong>Sending a record to Summarize Inspection Notes</strong>
           <span>Use <em>Send to Inspection Notes</em> on an inspection, then save the ZIP in OneDrive &gt; Inspection Handoffs.</span>
+        </div>
+        <div id="inspectionBatchToolbar" class="inspection-batch-toolbar">
+          <label><input id="selectAllVisibleInspections" type="checkbox"> Select all shown</label>
+          <span id="inspectionBatchCount" class="inspection-batch-count">0 selected</span>
+          <button id="exportSelectedInspectionsBtn" class="button inspection-button button-small" type="button" disabled>Export Selected (ZIP)</button>
+          <button id="clearSelectedInspectionsBtn" class="button button-secondary button-small" type="button" disabled>Clear</button>
         </div>
 
         <div id="inspectionFormPanel" class="inspection-form-panel hidden"></div>
@@ -1105,6 +1122,39 @@
     showInspectionToast(wasEditing ? "Inspection updated." : "Inspection saved.");
   }
 
+  function inspectionBackupStatus(state, inspection) {
+    const confirmedISO = state.backup?.lastConfirmedISO || "";
+    const changedISO = inspection.modifiedISO || inspection.createdISO || "";
+    if (!confirmedISO) {
+      return { label: "Never backed up", className: "inspection-backup-never" };
+    }
+    if (changedISO && confirmedISO < changedISO) {
+      return { label: "Changes not backed up", className: "inspection-backup-pending" };
+    }
+    return { label: "Backed up", className: "inspection-backup-current" };
+  }
+
+  function updateInspectionBatchControls(visibleInspections = []) {
+    const allIds = new Set(readState().settings.inspections.map((inspection) => inspection.id));
+    [...selectedInspectionIds].forEach((id) => {
+      if (!allIds.has(id)) selectedInspectionIds.delete(id);
+    });
+    const visibleIds = visibleInspections.map((inspection) => inspection.id);
+    const selectedVisibleCount = visibleIds.filter((id) => selectedInspectionIds.has(id)).length;
+    const selectAll = $("selectAllVisibleInspections");
+    if (selectAll) {
+      selectAll.checked = Boolean(visibleIds.length && selectedVisibleCount === visibleIds.length);
+      selectAll.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleIds.length;
+      selectAll.disabled = !visibleIds.length;
+    }
+    const count = $("inspectionBatchCount");
+    if (count) count.textContent = `${selectedInspectionIds.size} selected`;
+    const exportButton = $("exportSelectedInspectionsBtn");
+    const clearButton = $("clearSelectedInspectionsBtn");
+    if (exportButton) exportButton.disabled = selectedInspectionIds.size === 0;
+    if (clearButton) clearButton.disabled = selectedInspectionIds.size === 0;
+  }
+
   function renderInspectionList(state) {
     const container = $("inspectionList");
     if (!container) return;
@@ -1115,11 +1165,13 @@
 
     if (activeView === "followups") {
       renderOpenFollowUps(inspections, container);
+      updateInspectionBatchControls([]);
       return;
     }
 
     if (!inspections.length) {
       container.innerHTML = `<div class="inspection-empty">No inspection records match the current search.</div>`;
+      updateInspectionBatchControls([]);
       return;
     }
 
@@ -1131,15 +1183,22 @@
       const statusClass = ["Complete", "Released"].includes(inspection.status)
         ? "inspection-pill-complete"
         : "inspection-pill-open";
+      const backupStatus = inspectionBackupStatus(state, inspection);
       return `
         <article class="inspection-record" data-inspection-id="${escapeHTML(inspection.id)}">
           <div class="inspection-record-heading">
-            <div>
-              <p class="eyebrow">${escapeHTML(displayDate(inspection.date))} • ${escapeHTML(inspection.inspectionType || "Inspection")}</p>
-              <h3>${escapeHTML(inspection.vendor || "Facility")}${inspection.projectNumber ? ` — ${escapeHTML(inspection.projectNumber)}` : ""}</h3>
-              <p class="muted">${escapeHTML(inspection.customer || "")}${inspection.equipmentTag ? ` • ${escapeHTML(inspection.equipmentTag)}` : ""}${inspection.purchaseOrderJob ? ` • ${escapeHTML(inspection.purchaseOrderJob)}` : ""}</p>
+            <div class="inspection-record-select">
+              <input type="checkbox" data-select-inspection="${escapeHTML(inspection.id)}"${selectedInspectionIds.has(inspection.id) ? " checked" : ""} aria-label="Select this inspection">
+              <div>
+                <p class="eyebrow">${escapeHTML(displayDate(inspection.date))} • ${escapeHTML(inspection.inspectionType || "Inspection")}</p>
+                <h3>${escapeHTML(inspection.vendor || "Facility")}${inspection.projectNumber ? ` — ${escapeHTML(inspection.projectNumber)}` : ""}</h3>
+                <p class="muted">${escapeHTML(inspection.customer || "")}${inspection.equipmentTag ? ` • ${escapeHTML(inspection.equipmentTag)}` : ""}${inspection.purchaseOrderJob ? ` • ${escapeHTML(inspection.purchaseOrderJob)}` : ""}</p>
+              </div>
             </div>
-            <span class="pill ${statusClass}">${escapeHTML(inspection.status || "Pending")}</span>
+            <div class="inspection-record-pills">
+              <span class="pill ${backupStatus.className}">${escapeHTML(backupStatus.label)}</span>
+              <span class="pill ${statusClass}">${escapeHTML(inspection.status || "Pending")}</span>
+            </div>
           </div>
 
           <div class="inspection-meta">
@@ -1176,6 +1235,7 @@
         </article>
       `;
     }).join("");
+    updateInspectionBatchControls(inspections);
     hydrateInspectionListPhotos();
   }
 
@@ -2266,6 +2326,38 @@
     showInspectionToast("Handoff downloaded. Move it to OneDrive > Inspection Handoffs.");
   }
 
+  async function buildInspectionPackageEntries(inspection, folder = "") {
+    const photos = await loadPackagePhotos(inspection);
+    const baseName = packageBaseName(inspection);
+    const editableReportFilename = `${baseName}_Editable_Report.docx`;
+    const templateRecord = inspectionTemplateInstalled
+      ? await readInspectionReportTemplateRecord()
+      : null;
+    const docx = templateRecord?.bytes
+      ? await buildSAndBInspectionDocx(
+        templateRecord,
+        inspection,
+        photos,
+        editableReportFilename
+      )
+      : await buildInspectionDocx(inspection, photos);
+    const prefix = folder ? `${folder}/` : "";
+    const entries = {
+      [`${prefix}00_READ_ME_FIRST.txt`]: window.fflate.strToU8(buildHandoffReadme(inspection, baseName)),
+      [`${prefix}${baseName}_Handoff.json`]: window.fflate.strToU8(buildInspectionHandoffJson(inspection, photos)),
+      [`${prefix}${baseName}_Report.pdf`]: await buildInspectionPdf(inspection, photos),
+      [`${prefix}${editableReportFilename}`]: docx,
+      [`${prefix}${baseName}_Update.txt`]: window.fflate.strToU8(buildInspectionUpdate(inspection, photos.length)),
+      [`${prefix}${baseName}_Data.csv`]: window.fflate.strToU8(buildInspectionDataCsv(inspection, photos.length)),
+      [`${prefix}${baseName}_Photo_Index.html`]: window.fflate.strToU8(buildPhotoIndexHtml(inspection, photos)),
+      [`${prefix}${baseName}_Photo_Text.txt`]: window.fflate.strToU8(buildPhotoTextFile(inspection, photos))
+    };
+    for (const photo of photos) {
+      entries[`${prefix}${photo.packagePath}`] = new Uint8Array(await photo.blob.arrayBuffer());
+    }
+    return { baseName, entries };
+  }
+
   async function exportInspectionPackage(inspection, button) {
     if (!window.fflate) {
       window.alert("The ZIP component is unavailable. Reopen the app while online and try again.");
@@ -2277,40 +2369,7 @@
       button.textContent = "Building Package...";
     }
     try {
-      const photos = await loadPackagePhotos(inspection);
-      const baseName = packageBaseName(inspection);
-      const updateText = buildInspectionUpdate(inspection, photos.length);
-      const csv = buildInspectionDataCsv(inspection, photos.length);
-      const html = buildPhotoIndexHtml(inspection, photos);
-      const pdf = await buildInspectionPdf(inspection, photos);
-      const editableReportFilename = `${baseName}_Editable_Report.docx`;
-      const handoffJson = buildInspectionHandoffJson(inspection, photos);
-      const photoText = buildPhotoTextFile(inspection, photos);
-      const readme = buildHandoffReadme(inspection, baseName);
-      const templateRecord = inspectionTemplateInstalled
-        ? await readInspectionReportTemplateRecord()
-        : null;
-      const docx = templateRecord?.bytes
-        ? await buildSAndBInspectionDocx(
-          templateRecord,
-          inspection,
-          photos,
-          editableReportFilename
-        )
-        : await buildInspectionDocx(inspection, photos);
-      const entries = {
-        ["00_READ_ME_FIRST.txt"]: window.fflate.strToU8(readme),
-        [`${baseName}_Handoff.json`]: window.fflate.strToU8(handoffJson),
-        [`${baseName}_Report.pdf`]: pdf,
-        [editableReportFilename]: docx,
-        [`${baseName}_Update.txt`]: window.fflate.strToU8(updateText),
-        [`${baseName}_Data.csv`]: window.fflate.strToU8(csv),
-        [`${baseName}_Photo_Index.html`]: window.fflate.strToU8(html),
-        [`${baseName}_Photo_Text.txt`]: window.fflate.strToU8(photoText)
-      };
-      for (const photo of photos) {
-        entries[photo.packagePath] = new Uint8Array(await photo.blob.arrayBuffer());
-      }
+      const { baseName, entries } = await buildInspectionPackageEntries(inspection);
       const bytes = window.fflate.zipSync(entries, { level: 6 });
       const filename = `${baseName}_Inspection_Handoff.zip`;
       await deliverInspectionPackage(filename, new Blob([bytes], { type: "application/zip" }));
@@ -2320,6 +2379,49 @@
     } finally {
       if (button) {
         button.disabled = false;
+        button.textContent = originalText;
+      }
+    }
+  }
+
+  async function exportSelectedInspectionPackages(button) {
+    if (!window.fflate) {
+      window.alert("The ZIP component is unavailable. Reopen the app while online and try again.");
+      return;
+    }
+    const state = readState();
+    const inspections = state.settings.inspections.filter((inspection) => selectedInspectionIds.has(inspection.id));
+    if (!inspections.length) {
+      window.alert("Select at least one inspection.");
+      return;
+    }
+    const originalText = button?.textContent || "Export Selected (ZIP)";
+    if (button) {
+      button.disabled = true;
+      button.textContent = `Building 0 of ${inspections.length}...`;
+    }
+    try {
+      const entries = {
+        ["00_READ_ME_FIRST.txt"]: window.fflate.strToU8(
+          `SELECTED INSPECTION HANDOFFS\r\n\r\nThis ZIP contains ${inspections.length} selected inspection package${inspections.length === 1 ? "" : "s"}, one per folder.\r\nThis is a handoff/export file. Keep using Save Full Backup to Files for a complete app restore backup.\r\n`
+        )
+      };
+      for (let index = 0; index < inspections.length; index += 1) {
+        if (button) button.textContent = `Building ${index + 1} of ${inspections.length}...`;
+        const inspection = inspections[index];
+        const folder = `${String(index + 1).padStart(2, "0")}_${packageBaseName(inspection)}`;
+        const packageData = await buildInspectionPackageEntries(inspection, folder);
+        Object.assign(entries, packageData.entries);
+      }
+      const bytes = window.fflate.zipSync(entries, { level: 6 });
+      const filename = `Selected_Inspection_Handoffs_${new Date().toISOString().slice(0, 10)}_${inspections.length}_records.zip`;
+      await deliverInspectionPackage(filename, new Blob([bytes], { type: "application/zip" }));
+    } catch (error) {
+      console.error("Selected inspection export failed:", error);
+      window.alert(`The selected inspection packages could not be created.\n\n${error.message}`);
+    } finally {
+      if (button) {
+        button.disabled = selectedInspectionIds.size === 0;
         button.textContent = originalText;
       }
     }
@@ -2415,6 +2517,21 @@
     $("inspectionListViewBtn")?.addEventListener("click", () => setActiveView("inspections"));
     $("followUpViewBtn")?.addEventListener("click", () => setActiveView("followups"));
     $("exportInspectionsBtn")?.addEventListener("click", exportInspectionCSV);
+    $("exportSelectedInspectionsBtn")?.addEventListener("click", (event) => {
+      exportSelectedInspectionPackages(event.currentTarget);
+    });
+    $("clearSelectedInspectionsBtn")?.addEventListener("click", () => {
+      selectedInspectionIds.clear();
+      renderInspectionList(readState());
+    });
+    $("selectAllVisibleInspections")?.addEventListener("change", (event) => {
+      const checked = event.currentTarget.checked;
+      document.querySelectorAll("#inspectionList [data-select-inspection]").forEach((input) => {
+        if (checked) selectedInspectionIds.add(input.dataset.selectInspection);
+        else selectedInspectionIds.delete(input.dataset.selectInspection);
+      });
+      renderInspectionList(readState());
+    });
     $("importInspectionTemplateBtn")?.addEventListener("click", () => {
       $("inspectionTemplateFileInput")?.click();
     });
@@ -2586,6 +2703,17 @@
       if (mainAppControl && !event.target.closest("#inspectionSection")) {
         $("inspectionSection")?.classList.add("hidden");
       }
+    });
+
+    document.addEventListener("change", (event) => {
+      const checkbox = event.target.closest("[data-select-inspection]");
+      if (!checkbox) return;
+      if (checkbox.checked) selectedInspectionIds.add(checkbox.dataset.selectInspection);
+      else selectedInspectionIds.delete(checkbox.dataset.selectInspection);
+      updateInspectionBatchControls(
+        [...document.querySelectorAll("#inspectionList [data-inspection-id]")]
+          .map((record) => ({ id: record.dataset.inspectionId }))
+      );
     });
 
     document.addEventListener("change", (event) => {
