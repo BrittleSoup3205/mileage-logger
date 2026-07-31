@@ -222,7 +222,7 @@
         return false;
       }
       const imported = record.importedISO ? new Date(record.importedISO).toLocaleString() : "date unavailable";
-      status.innerHTML = `<strong>${escapeHTML(record.name || "S&B inspection report template")}</strong><br>Stored privately on this device â€¢ ${escapeHTML(privateFileSize(record.size))} â€¢ imported ${escapeHTML(imported)}`;
+      status.innerHTML = `<strong>${escapeHTML(record.name || "S&B inspection report template")}</strong><br>Stored privately on this device • ${escapeHTML(privateFileSize(record.size))} • imported ${escapeHTML(imported)}`;
       status.className = "private-master-status installed";
       pill.textContent = "INSTALLED";
       pill.className = "pill ready";
@@ -314,7 +314,7 @@
   }
 
   function displayDate(value) {
-    if (!value) return "â€”";
+    if (!value) return "—";
     const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (match) return `${match[2]}/${match[3]}/${match[1]}`;
     return String(value);
@@ -322,13 +322,13 @@
 
   function formatMiles(value) {
     const number = Number(value);
-    return Number.isFinite(number) ? `${number.toFixed(1)} mi` : "â€”";
+    return Number.isFinite(number) ? `${number.toFixed(1)} mi` : "—";
   }
 
   function formatDateTime(iso) {
-    if (!iso) return "â€”";
+    if (!iso) return "—";
     const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) return "â€”";
+    if (Number.isNaN(date.getTime())) return "—";
     return date.toLocaleString("en-US", {
       month: "short",
       day: "numeric",
@@ -587,7 +587,7 @@
             <span id="inspectionTemplatePill" class="pill">CHECKING</span>
           </div>
           <div id="inspectionTemplateStatus" class="private-master-status">
-            Checking this device for an imported S&B Word templateâ€¦
+            Checking this device for an imported S&B Word template…
           </div>
           <div class="form-actions wrap">
             <button id="importInspectionTemplateBtn" class="button inspection-button button-small" type="button">Import S&B Word Template</button>
@@ -693,8 +693,8 @@
       <h2>Create an inspection record?</h2>
       <p>
         <strong>${escapeHTML(candidate.vendor || "Destination")}</strong>
-        ${candidate.projectNumber ? `â€¢ ${escapeHTML(candidate.projectNumber)}` : ""}<br>
-        ${escapeHTML(candidate.date || "")}${candidate.miles !== undefined ? ` â€¢ ${formatMiles(candidate.miles)}` : ""}
+        ${candidate.projectNumber ? `• ${escapeHTML(candidate.projectNumber)}` : ""}<br>
+        ${escapeHTML(candidate.date || "")}${candidate.miles !== undefined ? ` • ${formatMiles(candidate.miles)}` : ""}
       </p>
       <div class="inspection-prompt-actions">
         <button class="button inspection-button" type="button" data-create-inspection-trip="${escapeHTML(candidate.id)}">Create Inspection Record</button>
@@ -731,9 +731,9 @@
   function renderTripOptions(state, selectedTripId) {
     const sortedTrips = [...state.trips].sort((a, b) => String(b.endISO || "").localeCompare(String(a.endISO || "")));
     return [
-      `<option value="">Standalone inspection â€” no mileage trip</option>`,
+      `<option value="">Standalone inspection — no mileage trip</option>`,
       ...sortedTrips.map((trip) => {
-        const label = [trip.date, trip.vendor, trip.projectNumber, formatMiles(trip.miles)].filter(Boolean).join(" â€¢ ");
+        const label = [trip.date, trip.vendor, trip.projectNumber, formatMiles(trip.miles)].filter(Boolean).join(" • ");
         return `<option value="${escapeHTML(trip.id)}"${trip.id === selectedTripId ? " selected" : ""}>${escapeHTML(label)}</option>`;
       })
     ].join("");
@@ -785,7 +785,7 @@
     list.innerHTML = currentPhotos.map((photo) => `
       <article class="inspection-photo-card">
         <button class="inspection-photo-preview" type="button" data-view-photo="${escapeHTML(photo.id)}" aria-label="Open photo">
-          <span class="inspection-photo-loading">Loading photoâ€¦</span>
+          <span class="inspection-photo-loading">Loading photo…</span>
         </button>
         <div class="inspection-photo-details">
           <strong>${escapeHTML(photo.name || "Inspection photo")}</strong>
@@ -821,12 +821,12 @@
 
     const images = [...(files || [])].filter((file) => String(file.type || "").startsWith("image/"));
     if (!images.length) return;
-    status.textContent = `Preparing ${images.length} photo${images.length === 1 ? "" : "s"}â€¦`;
+    status.textContent = `Preparing ${images.length} photo${images.length === 1 ? "" : "s"}…`;
     status.className = "gps-status";
 
     try {
       for (let index = 0; index < images.length; index += 1) {
-        status.textContent = `Preparing photo ${index + 1} of ${images.length}â€¦`;
+        status.textContent = `Preparing photo ${index + 1} of ${images.length}…`;
         const metadata = await window.MileageMediaStore.addPhoto(editingInspectionId, images[index]);
         currentPhotos.push(metadata);
       }
@@ -1039,9 +1039,9 @@
     const endMap = mapLink(snapshot.endLocation, "Trip End");
     box.innerHTML = `
       <strong>Linked mileage: ${formatMiles(snapshot.miles)}</strong>
-      ${snapshot.gpsRouteMiles ? ` â€¢ GPS ${formatMiles(snapshot.gpsRouteMiles)}` : ""}<br>
-      <small>${escapeHTML(snapshot.date || "")} ${escapeHTML(snapshot.startTime || "")}â€“${escapeHTML(snapshot.endTime || "")}
-      ${snapshot.staGenerated ? ` â€¢ STA ${escapeHTML(snapshot.staFileName || "generated")}` : ""}</small>
+      ${snapshot.gpsRouteMiles ? ` • GPS ${formatMiles(snapshot.gpsRouteMiles)}` : ""}<br>
+      <small>${escapeHTML(snapshot.date || "")} ${escapeHTML(snapshot.startTime || "")}–${escapeHTML(snapshot.endTime || "")}
+      ${snapshot.staGenerated ? ` • STA ${escapeHTML(snapshot.staFileName || "generated")}` : ""}</small>
       ${(startMap || endMap) ? `<div class="map-links">${startMap ? `<a href="${startMap}" target="_blank" rel="noopener">Start map</a>` : ""}${endMap ? `<a href="${endMap}" target="_blank" rel="noopener">End map</a>` : ""}</div>` : ""}
     `;
   }
@@ -1266,9 +1266,9 @@
             <div class="inspection-record-select">
               <input type="checkbox" data-select-inspection="${escapeHTML(inspection.id)}"${selectedInspectionIds.has(inspection.id) ? " checked" : ""} aria-label="Select this inspection">
               <div>
-                <p class="eyebrow">${escapeHTML(displayDate(inspection.date))} â€¢ ${escapeHTML(inspection.inspectionType || "Inspection")}</p>
-                <h3>${escapeHTML(inspection.vendor || "Facility")}${inspection.projectNumber ? ` â€” ${escapeHTML(inspection.projectNumber)}` : ""}</h3>
-                <p class="muted">${escapeHTML(inspection.customer || "")}${inspection.equipmentTag ? ` â€¢ ${escapeHTML(inspection.equipmentTag)}` : ""}${inspection.purchaseOrderJob ? ` â€¢ ${escapeHTML(inspection.purchaseOrderJob)}` : ""}</p>
+                <p class="eyebrow">${escapeHTML(displayDate(inspection.date))} • ${escapeHTML(inspection.inspectionType || "Inspection")}</p>
+                <h3>${escapeHTML(inspection.vendor || "Facility")}${inspection.projectNumber ? ` — ${escapeHTML(inspection.projectNumber)}` : ""}</h3>
+                <p class="muted">${escapeHTML(inspection.customer || "")}${inspection.equipmentTag ? ` • ${escapeHTML(inspection.equipmentTag)}` : ""}${inspection.purchaseOrderJob ? ` • ${escapeHTML(inspection.purchaseOrderJob)}` : ""}</p>
               </div>
             </div>
             <div class="inspection-record-pills">
@@ -1279,9 +1279,9 @@
           </div>
 
           <div class="inspection-meta">
-            <span><strong>Activity:</strong> ${escapeHTML(inspection.activity || "â€”")}</span>
+            <span><strong>Activity:</strong> ${escapeHTML(inspection.activity || "—")}</span>
             <span><strong>Acceptance:</strong> ${escapeHTML(inspection.acceptanceStatus || "Not Determined")}</span>
-            <span><strong>Hours:</strong> ${escapeHTML(inspection.hoursOnSite || "â€”")}</span>
+            <span><strong>Hours:</strong> ${escapeHTML(inspection.hoursOnSite || "—")}</span>
             <span><strong>Mileage:</strong> ${snapshot ? formatMiles(snapshot.miles) : "Standalone"}</span>
             <span><strong>Open actions:</strong> ${openCount}</span>
             <span><strong>Photos:</strong> ${photos.length}</span>
@@ -1298,7 +1298,7 @@
           ${followUps.length ? `<div class="inspection-followups">${followUps.map((item) => `
             <div class="inspection-followup ${item.status === "Closed" ? "closed" : ""}">
               <strong>${escapeHTML(item.action)}</strong><br>
-              <small>${escapeHTML(item.responsibleParty || "Unassigned")}${item.dueDate ? ` â€¢ due ${escapeHTML(displayDate(item.dueDate))}` : ""} â€¢ ${escapeHTML(item.status || "Open")}</small>
+              <small>${escapeHTML(item.responsibleParty || "Unassigned")}${item.dueDate ? ` • due ${escapeHTML(displayDate(item.dueDate))}` : ""} • ${escapeHTML(item.status || "Open")}</small>
             </div>
           `).join("")}</div>` : ""}
 
@@ -1352,9 +1352,9 @@
       <article class="inspection-record">
         <div class="inspection-record-heading">
           <div>
-            <p class="eyebrow">Open follow-up${item.dueDate ? ` â€¢ due ${escapeHTML(displayDate(item.dueDate))}` : ""}</p>
+            <p class="eyebrow">Open follow-up${item.dueDate ? ` • due ${escapeHTML(displayDate(item.dueDate))}` : ""}</p>
             <h3>${escapeHTML(item.action)}</h3>
-            <p class="muted">${escapeHTML(inspection.vendor || "Facility")}${inspection.projectNumber ? ` â€¢ ${escapeHTML(inspection.projectNumber)}` : ""} â€¢ ${escapeHTML(displayDate(inspection.date))}</p>
+            <p class="muted">${escapeHTML(inspection.vendor || "Facility")}${inspection.projectNumber ? ` • ${escapeHTML(inspection.projectNumber)}` : ""} • ${escapeHTML(displayDate(inspection.date))}</p>
           </div>
           <span class="pill inspection-pill-open">OPEN</span>
         </div>
@@ -1965,7 +1965,7 @@
 
     const followUps = Array.isArray(inspection.followUps) ? inspection.followUps : [];
     const actionItems = followUps.map((item) => {
-      const owner = item.responsibleParty ? ` â€” ${item.responsibleParty}` : "";
+      const owner = item.responsibleParty ? ` — ${item.responsibleParty}` : "";
       const due = item.dueDate ? `, due ${displayDate(item.dueDate)}` : "";
       return `${item.action || "Follow-up"}${owner}${due} (${item.status || "Open"})`;
     }).join("\n");
@@ -1979,7 +1979,7 @@
     setLabeledParagraphValue(
       documentXml,
       "Shop Inspection:",
-      [inspection.activity, inspection.summary].filter(Boolean).join(" â€” ")
+      [inspection.activity, inspection.summary].filter(Boolean).join(" — ")
     );
     if (/NDE/i.test(inspection.inspectionType || "") || /NDE/i.test(inspection.activity || "")) {
       setLabeledParagraphValue(documentXml, "NDE Review:", inspection.observations || inspection.summary || "Performed");
@@ -1993,7 +1993,7 @@
       [
         inspection.acceptanceStatus || "",
         inspection.deficiencies ? `Exceptions: ${inspection.deficiencies}` : ""
-      ].filter(Boolean).join(" â€” ")
+      ].filter(Boolean).join(" — ")
     );
 
     const relationshipRoot = relationshipsXml.documentElement;
@@ -2829,7 +2829,7 @@
         const importButton = $("importInspectionTemplateBtn");
         if (importButton) importButton.disabled = true;
         if (status) {
-          status.textContent = "Validating and storing the S&B Word template privately on this deviceâ€¦";
+          status.textContent = "Validating and storing the S&B Word template privately on this device…";
           status.className = "private-master-status";
         }
         importInspectionReportTemplate(file)
