@@ -5,6 +5,7 @@ BACKUP IS NOW A REQUIRED PART OF THE WORKFLOW
 ---------------------------------------------
 When a completed trip or saved record is changed, the app creates one full ZIP restore file.
 The ZIP contains the normal app data plus privately stored inspection photos.
+Before the Save to Files step, the app shows the exact number of completed trips, active trips, inspection records, stored photos, and the ZIP file size.
 
 On iPhone:
 1. Tap Save Completed Trip.
@@ -57,6 +58,9 @@ INSPECTION NOTES HANDOFFS
 -------------------------
 Open Inspection History and tap Send to Inspection Notes on an inspection record.
 Save the ZIP in OneDrive > Inspection Handoffs.
+Select multiple inspection records and use Export Selected (ZIP) to create one combined handoff containing a folder for each selected inspection.
+Each record shows whether its current version has been exported. Use the inspection filter to find records that are not exported, changed since export, waiting for full backup, incomplete, or have open follow-ups.
+Use Duplicate to start a new standalone inspection from a previous record. The copy keeps the work details and follow-ups, but starts with today's date, no linked trip, no photos, and a new export history.
 The computer-friendly ZIP contains:
 - A read-me file explaining how to use the handoff
 - A structured JSON record for dependable merging
@@ -100,3 +104,4 @@ The hosted package does not contain the STA master. Import the approved master p
 IMPORTANT
 ---------
 The app cannot silently write into an iCloud Drive folder. iPhone security requires the Save to Files selection. The app reduces the process to the native share sheet, folder choice, Save, and a confirmation.
+
