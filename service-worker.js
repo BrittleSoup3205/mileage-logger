@@ -1,11 +1,11 @@
-const CACHE_NAME = "mileage-logger-inspection-batch-active-edit-v29";
+const CACHE_NAME = "mileage-logger-inspection-workflow-v30";
 const APP_FILES = [
   "./",
   "./index.html",
-  "./styles.css?v=inspection-batch-active-edit-1",
-  "./app.js?v=inspection-batch-active-edit-1",
-  "./inspections.js?v=inspection-batch-active-edit-1",
-  "./media-store.js?v=inspection-batch-active-edit-1",
+  "./styles.css?v=inspection-workflow-2",
+  "./app.js?v=inspection-workflow-2",
+  "./inspections.js?v=inspection-workflow-2",
+  "./media-store.js?v=inspection-workflow-2",
   "./vendor/pdf-lib.min.js",
   "./vendor/fflate.min.js",
   "./manifest.webmanifest",
@@ -46,4 +46,5 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
+
 

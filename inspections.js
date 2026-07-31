@@ -222,7 +222,7 @@
         return false;
       }
       const imported = record.importedISO ? new Date(record.importedISO).toLocaleString() : "date unavailable";
-      status.innerHTML = `<strong>${escapeHTML(record.name || "S&B inspection report template")}</strong><br>Stored privately on this device • ${escapeHTML(privateFileSize(record.size))} • imported ${escapeHTML(imported)}`;
+      status.innerHTML = `<strong>${escapeHTML(record.name || "S&B inspection report template")}</strong><br>Stored privately on this device â€¢ ${escapeHTML(privateFileSize(record.size))} â€¢ imported ${escapeHTML(imported)}`;
       status.className = "private-master-status installed";
       pill.textContent = "INSTALLED";
       pill.className = "pill ready";
@@ -314,7 +314,7 @@
   }
 
   function displayDate(value) {
-    if (!value) return "—";
+    if (!value) return "â€”";
     const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (match) return `${match[2]}/${match[3]}/${match[1]}`;
     return String(value);
@@ -322,13 +322,13 @@
 
   function formatMiles(value) {
     const number = Number(value);
-    return Number.isFinite(number) ? `${number.toFixed(1)} mi` : "—";
+    return Number.isFinite(number) ? `${number.toFixed(1)} mi` : "â€”";
   }
 
   function formatDateTime(iso) {
-    if (!iso) return "—";
+    if (!iso) return "â€”";
     const date = new Date(iso);
-    if (Number.isNaN(date.getTime())) return "—";
+    if (Number.isNaN(date.getTime())) return "â€”";
     return date.toLocaleString("en-US", {
       month: "short",
       day: "numeric",
@@ -482,6 +482,9 @@
       .inspection-backup-current { color: var(--success); border-color: var(--success); }
       .inspection-backup-pending { color: var(--warning); border-color: var(--warning); }
       .inspection-backup-never { color: var(--muted); }
+      .inspection-export-current { color: var(--info); border-color: var(--info); }
+      .inspection-export-pending { color: var(--warning); border-color: var(--warning); }
+      .inspection-export-never { color: var(--muted); }
       .inspection-batch-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 13px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--card), var(--bg) 28%); }
       .inspection-batch-toolbar label { display: flex; align-items: center; gap: 8px; margin: 0; }
       .inspection-batch-toolbar input { width: auto; }
@@ -584,7 +587,7 @@
             <span id="inspectionTemplatePill" class="pill">CHECKING</span>
           </div>
           <div id="inspectionTemplateStatus" class="private-master-status">
-            Checking this device for an imported S&B Word template…
+            Checking this device for an imported S&B Word templateâ€¦
           </div>
           <div class="form-actions wrap">
             <button id="importInspectionTemplateBtn" class="button inspection-button button-small" type="button">Import S&B Word Template</button>
@@ -617,7 +620,16 @@
 
         <div class="log-toolbar">
           <input id="inspectionSearch" class="search-input" placeholder="Search project, vendor, type, summary, or follow-up">
+          <select id="inspectionFilter" aria-label="Filter inspections">
+            <option value="all">All inspections</option>
+            <option value="needs-backup">Needs full backup</option>
+            <option value="not-exported">Not exported</option>
+            <option value="export-outdated">Changed since export</option>
+            <option value="incomplete">Incomplete or on hold</option>
+            <option value="open-followups">Has open follow-ups</option>
+          </select>
           <button id="clearInspectionSearch" class="button button-secondary button-small" type="button">Clear Search</button>
+          <span id="inspectionResultCount" class="inspection-batch-count"></span>
         </div>
 
         <div id="inspectionList" class="inspection-list"></div>
@@ -681,8 +693,8 @@
       <h2>Create an inspection record?</h2>
       <p>
         <strong>${escapeHTML(candidate.vendor || "Destination")}</strong>
-        ${candidate.projectNumber ? `• ${escapeHTML(candidate.projectNumber)}` : ""}<br>
-        ${escapeHTML(candidate.date || "")}${candidate.miles !== undefined ? ` • ${formatMiles(candidate.miles)}` : ""}
+        ${candidate.projectNumber ? `â€¢ ${escapeHTML(candidate.projectNumber)}` : ""}<br>
+        ${escapeHTML(candidate.date || "")}${candidate.miles !== undefined ? ` â€¢ ${formatMiles(candidate.miles)}` : ""}
       </p>
       <div class="inspection-prompt-actions">
         <button class="button inspection-button" type="button" data-create-inspection-trip="${escapeHTML(candidate.id)}">Create Inspection Record</button>
@@ -719,9 +731,9 @@
   function renderTripOptions(state, selectedTripId) {
     const sortedTrips = [...state.trips].sort((a, b) => String(b.endISO || "").localeCompare(String(a.endISO || "")));
     return [
-      `<option value="">Standalone inspection — no mileage trip</option>`,
+      `<option value="">Standalone inspection â€” no mileage trip</option>`,
       ...sortedTrips.map((trip) => {
-        const label = [trip.date, trip.vendor, trip.projectNumber, formatMiles(trip.miles)].filter(Boolean).join(" • ");
+        const label = [trip.date, trip.vendor, trip.projectNumber, formatMiles(trip.miles)].filter(Boolean).join(" â€¢ ");
         return `<option value="${escapeHTML(trip.id)}"${trip.id === selectedTripId ? " selected" : ""}>${escapeHTML(label)}</option>`;
       })
     ].join("");
@@ -773,7 +785,7 @@
     list.innerHTML = currentPhotos.map((photo) => `
       <article class="inspection-photo-card">
         <button class="inspection-photo-preview" type="button" data-view-photo="${escapeHTML(photo.id)}" aria-label="Open photo">
-          <span class="inspection-photo-loading">Loading photo…</span>
+          <span class="inspection-photo-loading">Loading photoâ€¦</span>
         </button>
         <div class="inspection-photo-details">
           <strong>${escapeHTML(photo.name || "Inspection photo")}</strong>
@@ -809,12 +821,12 @@
 
     const images = [...(files || [])].filter((file) => String(file.type || "").startsWith("image/"));
     if (!images.length) return;
-    status.textContent = `Preparing ${images.length} photo${images.length === 1 ? "" : "s"}…`;
+    status.textContent = `Preparing ${images.length} photo${images.length === 1 ? "" : "s"}â€¦`;
     status.className = "gps-status";
 
     try {
       for (let index = 0; index < images.length; index += 1) {
-        status.textContent = `Preparing photo ${index + 1} of ${images.length}…`;
+        status.textContent = `Preparing photo ${index + 1} of ${images.length}â€¦`;
         const metadata = await window.MileageMediaStore.addPhoto(editingInspectionId, images[index]);
         currentPhotos.push(metadata);
       }
@@ -860,13 +872,14 @@
     }
   }
 
-  function openInspectionForm(inspection = null, tripId = "") {
+  function openInspectionForm(inspection = null, tripId = "", options = {}) {
     const state = readState();
-    editingInspectionWasExisting = Boolean(inspection);
-    editingInspectionId = inspection?.id || makeId();
-    currentTripId = tripId || inspection?.tripId || "";
+    const duplicating = Boolean(options.duplicate);
+    editingInspectionWasExisting = Boolean(inspection) && !duplicating;
+    editingInspectionId = duplicating ? makeId() : (inspection?.id || makeId());
+    currentTripId = duplicating ? "" : (tripId || inspection?.tripId || "");
     const trip = getTripById(state, currentTripId);
-    const inspectionPhotos = Array.isArray(inspection?.photos)
+    const inspectionPhotos = !duplicating && Array.isArray(inspection?.photos)
       ? inspection.photos.map((photo) => ({ ...photo }))
       : [];
     const photoIds = new Set(inspectionPhotos.map((photo) => photo.id));
@@ -877,7 +890,7 @@
       : [];
     currentPhotos = [...inspectionPhotos, ...inheritedTripPhotos];
     originalPhotoIds = new Set(currentPhotos.map((photo) => photo.id));
-    const snapshot = inspection?.tripSnapshot || tripSnapshot(trip);
+    const snapshot = duplicating ? null : (inspection?.tripSnapshot || tripSnapshot(trip));
     const values = inspection || {};
 
     const date = values.date || (trip ? inputDateFromTrip(trip.date) : todayInputValue());
@@ -893,8 +906,8 @@
     panel.innerHTML = `
       <div class="section-heading compact">
         <div>
-          <p class="eyebrow">${editingInspectionWasExisting ? "Edit record" : "New record"}</p>
-          <h3>${editingInspectionWasExisting ? "Update Inspection" : "Create Inspection"}</h3>
+          <p class="eyebrow">${editingInspectionWasExisting ? "Edit record" : (duplicating ? "Copy previous record" : "New record")}</p>
+          <h3>${editingInspectionWasExisting ? "Update Inspection" : (duplicating ? "Create Inspection Copy" : "Create Inspection")}</h3>
         </div>
         <button id="closeInspectionFormBtn" class="button button-quiet button-small" type="button">Close Form</button>
       </div>
@@ -1026,9 +1039,9 @@
     const endMap = mapLink(snapshot.endLocation, "Trip End");
     box.innerHTML = `
       <strong>Linked mileage: ${formatMiles(snapshot.miles)}</strong>
-      ${snapshot.gpsRouteMiles ? ` • GPS ${formatMiles(snapshot.gpsRouteMiles)}` : ""}<br>
-      <small>${escapeHTML(snapshot.date || "")} ${escapeHTML(snapshot.startTime || "")}–${escapeHTML(snapshot.endTime || "")}
-      ${snapshot.staGenerated ? ` • STA ${escapeHTML(snapshot.staFileName || "generated")}` : ""}</small>
+      ${snapshot.gpsRouteMiles ? ` â€¢ GPS ${formatMiles(snapshot.gpsRouteMiles)}` : ""}<br>
+      <small>${escapeHTML(snapshot.date || "")} ${escapeHTML(snapshot.startTime || "")}â€“${escapeHTML(snapshot.endTime || "")}
+      ${snapshot.staGenerated ? ` â€¢ STA ${escapeHTML(snapshot.staFileName || "generated")}` : ""}</small>
       ${(startMap || endMap) ? `<div class="map-links">${startMap ? `<a href="${startMap}" target="_blank" rel="noopener">Start map</a>` : ""}${endMap ? `<a href="${endMap}" target="_blank" rel="noopener">End map</a>` : ""}</div>` : ""}
     `;
   }
@@ -1098,7 +1111,9 @@
       followUps: collectFollowUps(),
       photos: collectPhotoMetadata(),
       createdISO,
-      modifiedISO: nowISO()
+      modifiedISO: nowISO(),
+      handoffExportedISO: existing?.handoffExportedISO || "",
+      handoffExportedModifiedISO: existing?.handoffExportedModifiedISO || ""
     };
 
     if (!inspection.date || !inspection.customer || !inspection.vendor || !inspection.activity) {
@@ -1122,6 +1137,33 @@
     showInspectionToast(wasEditing ? "Inspection updated." : "Inspection saved.");
   }
 
+  function duplicateInspection(source) {
+    const duplicate = {
+      ...source,
+      id: "",
+      tripId: null,
+      tripSnapshot: null,
+      date: todayInputValue(),
+      status: "In Progress",
+      acceptanceStatus: "Not Determined",
+      startTime: "",
+      endTime: "",
+      hoursOnSite: "",
+      photos: [],
+      followUps: (source.followUps || []).map((item) => ({
+        ...item,
+        id: makeId("followup"),
+        status: "Open"
+      })),
+      createdISO: "",
+      modifiedISO: "",
+      handoffExportedISO: "",
+      handoffExportedModifiedISO: ""
+    };
+    showInspectionSection(false);
+    openInspectionForm(duplicate, "", { duplicate: true });
+  }
+
   function inspectionBackupStatus(state, inspection) {
     const confirmedISO = state.backup?.lastConfirmedISO || "";
     const changedISO = inspection.modifiedISO || inspection.createdISO || "";
@@ -1132,6 +1174,35 @@
       return { label: "Changes not backed up", className: "inspection-backup-pending" };
     }
     return { label: "Backed up", className: "inspection-backup-current" };
+  }
+
+  function inspectionExportStatus(inspection) {
+    const exportedISO = inspection.handoffExportedISO || "";
+    const exportedModifiedISO = inspection.handoffExportedModifiedISO || "";
+    const changedISO = inspection.modifiedISO || inspection.createdISO || "";
+    if (!exportedISO) {
+      return { label: "Not exported", className: "inspection-export-never", state: "never" };
+    }
+    if (changedISO && exportedModifiedISO !== changedISO) {
+      return { label: "Changed since export", className: "inspection-export-pending", state: "outdated" };
+    }
+    const date = new Date(exportedISO);
+    const dateLabel = Number.isNaN(date.getTime())
+      ? "Export created"
+      : `Exported ${date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+    return { label: dateLabel, className: "inspection-export-current", state: "current" };
+  }
+
+  function inspectionMatchesFilter(state, inspection, filter) {
+    const openFollowUps = (inspection.followUps || []).some((item) => item.status !== "Closed");
+    if (filter === "needs-backup") {
+      return inspectionBackupStatus(state, inspection).label !== "Backed up";
+    }
+    if (filter === "not-exported") return inspectionExportStatus(inspection).state === "never";
+    if (filter === "export-outdated") return inspectionExportStatus(inspection).state === "outdated";
+    if (filter === "incomplete") return !["Complete", "Released"].includes(inspection.status);
+    if (filter === "open-followups") return openFollowUps;
+    return true;
   }
 
   function updateInspectionBatchControls(visibleInspections = []) {
@@ -1159,9 +1230,13 @@
     const container = $("inspectionList");
     if (!container) return;
     const query = $("inspectionSearch")?.value.trim().toLowerCase() || "";
+    const filter = $("inspectionFilter")?.value || "all";
     const inspections = [...state.settings.inspections]
       .filter((inspection) => !query || inspectionSearchText(inspection).includes(query))
+      .filter((inspection) => inspectionMatchesFilter(state, inspection, filter))
       .sort((a, b) => `${b.date || ""}|${b.modifiedISO || ""}`.localeCompare(`${a.date || ""}|${a.modifiedISO || ""}`));
+    const resultCount = $("inspectionResultCount");
+    if (resultCount) resultCount.textContent = `${inspections.length} shown`;
 
     if (activeView === "followups") {
       renderOpenFollowUps(inspections, container);
@@ -1184,27 +1259,29 @@
         ? "inspection-pill-complete"
         : "inspection-pill-open";
       const backupStatus = inspectionBackupStatus(state, inspection);
+      const exportStatus = inspectionExportStatus(inspection);
       return `
         <article class="inspection-record" data-inspection-id="${escapeHTML(inspection.id)}">
           <div class="inspection-record-heading">
             <div class="inspection-record-select">
               <input type="checkbox" data-select-inspection="${escapeHTML(inspection.id)}"${selectedInspectionIds.has(inspection.id) ? " checked" : ""} aria-label="Select this inspection">
               <div>
-                <p class="eyebrow">${escapeHTML(displayDate(inspection.date))} • ${escapeHTML(inspection.inspectionType || "Inspection")}</p>
-                <h3>${escapeHTML(inspection.vendor || "Facility")}${inspection.projectNumber ? ` — ${escapeHTML(inspection.projectNumber)}` : ""}</h3>
-                <p class="muted">${escapeHTML(inspection.customer || "")}${inspection.equipmentTag ? ` • ${escapeHTML(inspection.equipmentTag)}` : ""}${inspection.purchaseOrderJob ? ` • ${escapeHTML(inspection.purchaseOrderJob)}` : ""}</p>
+                <p class="eyebrow">${escapeHTML(displayDate(inspection.date))} â€¢ ${escapeHTML(inspection.inspectionType || "Inspection")}</p>
+                <h3>${escapeHTML(inspection.vendor || "Facility")}${inspection.projectNumber ? ` â€” ${escapeHTML(inspection.projectNumber)}` : ""}</h3>
+                <p class="muted">${escapeHTML(inspection.customer || "")}${inspection.equipmentTag ? ` â€¢ ${escapeHTML(inspection.equipmentTag)}` : ""}${inspection.purchaseOrderJob ? ` â€¢ ${escapeHTML(inspection.purchaseOrderJob)}` : ""}</p>
               </div>
             </div>
             <div class="inspection-record-pills">
               <span class="pill ${backupStatus.className}">${escapeHTML(backupStatus.label)}</span>
+              <span class="pill ${exportStatus.className}">${escapeHTML(exportStatus.label)}</span>
               <span class="pill ${statusClass}">${escapeHTML(inspection.status || "Pending")}</span>
             </div>
           </div>
 
           <div class="inspection-meta">
-            <span><strong>Activity:</strong> ${escapeHTML(inspection.activity || "—")}</span>
+            <span><strong>Activity:</strong> ${escapeHTML(inspection.activity || "â€”")}</span>
             <span><strong>Acceptance:</strong> ${escapeHTML(inspection.acceptanceStatus || "Not Determined")}</span>
-            <span><strong>Hours:</strong> ${escapeHTML(inspection.hoursOnSite || "—")}</span>
+            <span><strong>Hours:</strong> ${escapeHTML(inspection.hoursOnSite || "â€”")}</span>
             <span><strong>Mileage:</strong> ${snapshot ? formatMiles(snapshot.miles) : "Standalone"}</span>
             <span><strong>Open actions:</strong> ${openCount}</span>
             <span><strong>Photos:</strong> ${photos.length}</span>
@@ -1221,12 +1298,13 @@
           ${followUps.length ? `<div class="inspection-followups">${followUps.map((item) => `
             <div class="inspection-followup ${item.status === "Closed" ? "closed" : ""}">
               <strong>${escapeHTML(item.action)}</strong><br>
-              <small>${escapeHTML(item.responsibleParty || "Unassigned")}${item.dueDate ? ` • due ${escapeHTML(displayDate(item.dueDate))}` : ""} • ${escapeHTML(item.status || "Open")}</small>
+              <small>${escapeHTML(item.responsibleParty || "Unassigned")}${item.dueDate ? ` â€¢ due ${escapeHTML(displayDate(item.dueDate))}` : ""} â€¢ ${escapeHTML(item.status || "Open")}</small>
             </div>
           `).join("")}</div>` : ""}
 
           <div class="inspection-record-actions">
             <button class="button button-secondary button-small" type="button" data-edit-inspection="${escapeHTML(inspection.id)}">Edit</button>
+            <button class="button button-secondary button-small" type="button" data-duplicate-inspection="${escapeHTML(inspection.id)}">Duplicate</button>
             <button class="button inspection-button button-small" type="button" data-export-inspection="${escapeHTML(inspection.id)}">Send to Inspection Notes</button>
             ${snapshot?.startLocation ? `<a class="button button-secondary button-small" href="${mapLink(snapshot.startLocation, "Trip Start")}" target="_blank" rel="noopener">Start Map</a>` : ""}
             ${snapshot?.endLocation ? `<a class="button button-secondary button-small" href="${mapLink(snapshot.endLocation, "Trip End")}" target="_blank" rel="noopener">End Map</a>` : ""}
@@ -1274,9 +1352,9 @@
       <article class="inspection-record">
         <div class="inspection-record-heading">
           <div>
-            <p class="eyebrow">Open follow-up${item.dueDate ? ` • due ${escapeHTML(displayDate(item.dueDate))}` : ""}</p>
+            <p class="eyebrow">Open follow-up${item.dueDate ? ` â€¢ due ${escapeHTML(displayDate(item.dueDate))}` : ""}</p>
             <h3>${escapeHTML(item.action)}</h3>
-            <p class="muted">${escapeHTML(inspection.vendor || "Facility")}${inspection.projectNumber ? ` • ${escapeHTML(inspection.projectNumber)}` : ""} • ${escapeHTML(displayDate(inspection.date))}</p>
+            <p class="muted">${escapeHTML(inspection.vendor || "Facility")}${inspection.projectNumber ? ` â€¢ ${escapeHTML(inspection.projectNumber)}` : ""} â€¢ ${escapeHTML(displayDate(inspection.date))}</p>
           </div>
           <span class="pill inspection-pill-open">OPEN</span>
         </div>
@@ -1887,7 +1965,7 @@
 
     const followUps = Array.isArray(inspection.followUps) ? inspection.followUps : [];
     const actionItems = followUps.map((item) => {
-      const owner = item.responsibleParty ? ` — ${item.responsibleParty}` : "";
+      const owner = item.responsibleParty ? ` â€” ${item.responsibleParty}` : "";
       const due = item.dueDate ? `, due ${displayDate(item.dueDate)}` : "";
       return `${item.action || "Follow-up"}${owner}${due} (${item.status || "Open"})`;
     }).join("\n");
@@ -1901,7 +1979,7 @@
     setLabeledParagraphValue(
       documentXml,
       "Shop Inspection:",
-      [inspection.activity, inspection.summary].filter(Boolean).join(" — ")
+      [inspection.activity, inspection.summary].filter(Boolean).join(" â€” ")
     );
     if (/NDE/i.test(inspection.inspectionType || "") || /NDE/i.test(inspection.activity || "")) {
       setLabeledParagraphValue(documentXml, "NDE Review:", inspection.observations || inspection.summary || "Performed");
@@ -1915,7 +1993,7 @@
       [
         inspection.acceptanceStatus || "",
         inspection.deficiencies ? `Exceptions: ${inspection.deficiencies}` : ""
-      ].filter(Boolean).join(" — ")
+      ].filter(Boolean).join(" â€” ")
     );
 
     const relationshipRoot = relationshipsXml.documentElement;
@@ -2305,11 +2383,11 @@
         // can cause Save to Files to save the message as a .txt file instead.
         await navigator.share({ files: [file] });
         showInspectionToast("Handoff ready. Save it in OneDrive > Inspection Handoffs.");
-        return;
+        return true;
       } catch (error) {
         if (error?.name === "AbortError") {
           showInspectionToast("Inspection package was not saved.");
-          return;
+          return false;
         }
         console.warn("Inspection package share failed; using download instead:", error);
       }
@@ -2324,6 +2402,20 @@
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1500);
     showInspectionToast("Handoff downloaded. Move it to OneDrive > Inspection Handoffs.");
+    return true;
+  }
+
+  function recordInspectionExports(inspectionIds) {
+    const state = readState();
+    const exportedISO = nowISO();
+    const idSet = new Set(inspectionIds);
+    state.settings.inspections.forEach((inspection) => {
+      if (!idSet.has(inspection.id)) return;
+      inspection.handoffExportedISO = exportedISO;
+      inspection.handoffExportedModifiedISO = inspection.modifiedISO || inspection.createdISO || exportedISO;
+    });
+    writeState(state);
+    refreshFromState(true);
   }
 
   async function buildInspectionPackageEntries(inspection, folder = "") {
@@ -2372,7 +2464,8 @@
       const { baseName, entries } = await buildInspectionPackageEntries(inspection);
       const bytes = window.fflate.zipSync(entries, { level: 6 });
       const filename = `${baseName}_Inspection_Handoff.zip`;
-      await deliverInspectionPackage(filename, new Blob([bytes], { type: "application/zip" }));
+      const delivered = await deliverInspectionPackage(filename, new Blob([bytes], { type: "application/zip" }));
+      if (delivered) recordInspectionExports([inspection.id]);
     } catch (error) {
       console.error("Inspection package export failed:", error);
       window.alert(`The inspection package could not be created.\n\n${error.message}`);
@@ -2415,7 +2508,8 @@
       }
       const bytes = window.fflate.zipSync(entries, { level: 6 });
       const filename = `Selected_Inspection_Handoffs_${new Date().toISOString().slice(0, 10)}_${inspections.length}_records.zip`;
-      await deliverInspectionPackage(filename, new Blob([bytes], { type: "application/zip" }));
+      const delivered = await deliverInspectionPackage(filename, new Blob([bytes], { type: "application/zip" }));
+      if (delivered) recordInspectionExports(inspections.map((inspection) => inspection.id));
     } catch (error) {
       console.error("Selected inspection export failed:", error);
       window.alert(`The selected inspection packages could not be created.\n\n${error.message}`);
@@ -2546,8 +2640,10 @@
       }
     });
     $("inspectionSearch")?.addEventListener("input", () => renderInspectionList(readState()));
+    $("inspectionFilter")?.addEventListener("change", () => renderInspectionList(readState()));
     $("clearInspectionSearch")?.addEventListener("click", () => {
       $("inspectionSearch").value = "";
+      $("inspectionFilter").value = "all";
       renderInspectionList(readState());
     });
 
@@ -2659,6 +2755,14 @@
         return;
       }
 
+      const duplicateButton = event.target.closest("[data-duplicate-inspection]");
+      if (duplicateButton) {
+        const state = readState();
+        const inspection = state.settings.inspections.find((item) => item.id === duplicateButton.dataset.duplicateInspection);
+        if (inspection) duplicateInspection(inspection);
+        return;
+      }
+
       const exportButton = event.target.closest("[data-export-inspection]");
       if (exportButton) {
         const state = readState();
@@ -2725,7 +2829,7 @@
         const importButton = $("importInspectionTemplateBtn");
         if (importButton) importButton.disabled = true;
         if (status) {
-          status.textContent = "Validating and storing the S&B Word template privately on this device…";
+          status.textContent = "Validating and storing the S&B Word template privately on this deviceâ€¦";
           status.className = "private-master-status";
         }
         importInspectionReportTemplate(file)
@@ -2807,6 +2911,7 @@
     initialize();
   }
 })();
+
 
 
 

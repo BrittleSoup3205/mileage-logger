@@ -11,7 +11,7 @@
   <title>Mileage Logger GPS</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=inspection-batch-active-edit-1">
+  <link rel="stylesheet" href="./styles.css?v=inspection-workflow-2">
 </head>
 <body>
   <header class="topbar">
@@ -19,7 +19,7 @@
       <h1>Mileage Logger</h1>
       <p id="todayLine" class="topbar-subtitle"></p>
     </div>
-    <button id="themeToggle" class="icon-button" type="button" aria-label="Toggle appearance">◐</button>
+    <button id="themeToggle" class="icon-button" type="button" aria-label="Toggle appearance">â—</button>
   </header>
 
   <main class="app-shell">
@@ -36,9 +36,9 @@
       <div class="status-heading">
         <div>
           <p class="eyebrow">Current status</p>
-          <h2 id="statusTitle">Loading…</h2>
+          <h2 id="statusTitle">Loadingâ€¦</h2>
         </div>
-        <span id="statusPill" class="pill">—</span>
+        <span id="statusPill" class="pill">â€”</span>
       </div>
       <div id="activeDetails" class="active-details"></div>
     </section>
@@ -52,7 +52,7 @@
         <span id="backupPill" class="pill">CHECKING</span>
       </div>
 
-      <div id="backupStatusText" class="backup-status-text">Checking backup status…</div>
+      <div id="backupStatusText" class="backup-status-text">Checking backup statusâ€¦</div>
 
       <div class="backup-actions">
         <button id="backupNowBtn" class="button button-backup" type="button">Save Full Backup to Files</button>
@@ -209,7 +209,7 @@
         </div>
 
         <div id="staMasterInstallStatus" class="private-master-status">
-          Checking this device for an imported STA master…
+          Checking this device for an imported STA masterâ€¦
         </div>
 
         <div class="form-actions wrap">
@@ -504,9 +504,10 @@
 
   <script src="./vendor/pdf-lib.min.js"></script>
   <script src="./vendor/fflate.min.js"></script>
-  <script src="./media-store.js?v=inspection-batch-active-edit-1"></script>
-  <script src="./app.js?v=inspection-batch-active-edit-1"></script>
-  <script src="./inspections.js?v=inspection-batch-active-edit-1"></script>
+  <script src="./media-store.js?v=inspection-workflow-2"></script>
+  <script src="./app.js?v=inspection-workflow-2"></script>
+  <script src="./inspections.js?v=inspection-workflow-2"></script>
 </body>
 </html>
+
 
