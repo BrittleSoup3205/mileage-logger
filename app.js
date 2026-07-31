@@ -239,7 +239,7 @@
     const count = Number(state.backup.lastConfirmedTripCount || 0);
     text.innerHTML = state.backup.lastConfirmedISO
       ? `<strong>Last confirmed backup:</strong> ${escapeHTML(formatBackupDate(state.backup.lastConfirmedISO))}<br>
-         ${count} completed trip${count === 1 ? "" : "s"} included â€¢ ${escapeHTML(state.backup.lastFilename || "backup file")}`
+         ${count} completed trip${count === 1 ? "" : "s"} included • ${escapeHTML(state.backup.lastFilename || "backup file")}`
       : `No completed trip is waiting for backup. After the first trip, the app will open the Save to Files process automatically.`;
     $("backupCard")?.classList.remove("backup-card-required");
   }
@@ -326,7 +326,7 @@
   function locationSummary(location) {
     if (!location) return "Not captured";
     const accuracy = Number(location.accuracy);
-    return `${Number(location.latitude).toFixed(6)}, ${Number(location.longitude).toFixed(6)} â€¢ accuracy Â±${Number.isFinite(accuracy) ? Math.round(accuracy) : "?"} m`;
+    return `${Number(location.latitude).toFixed(6)}, ${Number(location.longitude).toFixed(6)} • accuracy ±${Number.isFinite(accuracy) ? Math.round(accuracy) : "?"} m`;
   }
 
   function storedPhotoMetadata(photo) {
@@ -387,7 +387,7 @@
     list.innerHTML = photos.map((photo) => `
       <article class="active-trip-photo-card">
         <button class="active-trip-photo-preview" type="button" data-view-active-trip-photo="${escapeHTML(photo.id)}" aria-label="Open trip photo">
-          <span>Loading photoâ€¦</span>
+          <span>Loading photo…</span>
         </button>
         <div class="active-trip-photo-details">
           <strong>${escapeHTML(photo.name || "Trip photo")}</strong>
@@ -433,13 +433,13 @@
     const status = $("activeTripPhotoStatus");
     const tripId = state.activeTrip.id;
     if (status) {
-      status.textContent = `Preparing ${images.length} photo${images.length === 1 ? "" : "s"}â€¦`;
+      status.textContent = `Preparing ${images.length} photo${images.length === 1 ? "" : "s"}…`;
       status.className = "gps-status";
     }
 
     try {
       for (let index = 0; index < images.length; index += 1) {
-        if (status) status.textContent = `Preparing photo ${index + 1} of ${images.length}â€¦`;
+        if (status) status.textContent = `Preparing photo ${index + 1} of ${images.length}…`;
         const metadata = await window.MileageMediaStore.addPhoto(tripId, images[index]);
         if (!state.activeTrip || state.activeTrip.id !== tripId) {
           await window.MileageMediaStore.deletePhoto(metadata.id);
@@ -500,13 +500,13 @@
         <div class="detail-grid">
           <div class="detail"><span>Started</span><strong>${escapeHTML(trip.date)} ${escapeHTML(trip.startTime)}</strong></div>
           <div class="detail"><span>Start odometer</span><strong>${formatNumber(trip.startOdometer, true)}</strong></div>
-          <div class="detail"><span>Project</span><strong>${escapeHTML(trip.projectNumber || "â€”")}</strong></div>
+          <div class="detail"><span>Project</span><strong>${escapeHTML(trip.projectNumber || "—")}</strong></div>
           <div class="detail"><span>Customer</span><strong>${escapeHTML(trip.customer)}</strong></div>
           <div class="detail"><span>Vendor</span><strong>${escapeHTML(trip.vendor)}</strong></div>
           <div class="detail"><span>Purpose</span><strong>${escapeHTML(trip.purpose)}</strong></div>
           <div class="detail"><span>Start GPS</span><strong>${escapeHTML(locationSummary(trip.startLocation))}</strong></div>
-          <div class="detail"><span>Route GPS</span><strong>${escapeHTML(routeState)} â€¢ ${formatNumber(routeMiles, true)} mi</strong></div>
-          <div class="detail"><span>Notes</span><strong>${escapeHTML(trip.notes || "â€”")}</strong></div>
+          <div class="detail"><span>Route GPS</span><strong>${escapeHTML(routeState)} • ${formatNumber(routeMiles, true)} mi</strong></div>
+          <div class="detail"><span>Notes</span><strong>${escapeHTML(trip.notes || "—")}</strong></div>
         </div>
         <div class="active-controls">
           <button id="editActiveTripBtn" class="button button-secondary button-small" type="button">Edit Trip Info</button>
@@ -629,7 +629,7 @@
     $("endForm").reset();
     pendingEndLocation = null;
     $("endTripSummary").innerHTML = `
-      <strong>${escapeHTML(trip.customer)} â€” ${escapeHTML(trip.vendor)}</strong><br>
+      <strong>${escapeHTML(trip.customer)} — ${escapeHTML(trip.vendor)}</strong><br>
       ${escapeHTML(trip.purpose)}<br>
       Started ${escapeHTML(trip.date)} at ${escapeHTML(trip.startTime)}<br>
       Starting odometer: ${formatNumber(trip.startOdometer, true)}<br>
@@ -701,7 +701,7 @@
     }
 
     button.disabled = true;
-    statusElement.textContent = "Requesting current GPS locationâ€¦";
+    statusElement.textContent = "Requesting current GPS location…";
     statusElement.className = "gps-status";
 
     navigator.geolocation.getCurrentPosition(
@@ -953,7 +953,7 @@
       .sort((a, b) => String(b.endISO).localeCompare(String(a.endISO)));
 
     const totalMiles = filtered.reduce((sum, trip) => sum + Number(trip.miles || 0), 0);
-    $("logSummary").textContent = `${filtered.length} trip${filtered.length === 1 ? "" : "s"} â€¢ ${formatNumber(totalMiles, true)} odometer miles`;
+    $("logSummary").textContent = `${filtered.length} trip${filtered.length === 1 ? "" : "s"} • ${formatNumber(totalMiles, true)} odometer miles`;
 
     const tbody = $("tripTable").querySelector("tbody");
     tbody.innerHTML = "";
@@ -973,8 +973,8 @@
         <td>${formatNumber(trip.startOdometer, true)}</td>
         <td>${formatNumber(trip.endOdometer, true)}</td>
         <td>${formatNumber(trip.miles, true)}</td>
-        <td>${gpsMiles > 0 ? formatNumber(gpsMiles, true) : "â€”"}</td>
-        <td>${difference !== null ? formatNumber(difference, true) : "â€”"}</td>
+        <td>${gpsMiles > 0 ? formatNumber(gpsMiles, true) : "—"}</td>
+        <td>${difference !== null ? formatNumber(difference, true) : "—"}</td>
         <td>${escapeHTML(trip.customer)}</td>
         <td>${escapeHTML(trip.vendor)}</td>
         <td>${escapeHTML(trip.purpose)}</td>
@@ -986,7 +986,7 @@
         </td>
         <td>
           <div class="map-links">
-            ${startMap ? `<a href="${startMap}" target="_blank" rel="noopener">Start</a>` : "â€”"}
+            ${startMap ? `<a href="${startMap}" target="_blank" rel="noopener">Start</a>` : "—"}
             ${endMap ? `<a href="${endMap}" target="_blank" rel="noopener">End</a>` : ""}
           </div>
         </td>
@@ -1027,8 +1027,8 @@
 
     closeTripPhotoPanel();
     panel.classList.remove("hidden");
-    $("tripPhotoPanelTitle").textContent = `Trip Photos â€” ${trip.vendor || trip.date || "Saved Trip"}`;
-    status.textContent = "Loading saved photosâ€¦";
+    $("tripPhotoPanelTitle").textContent = `Trip Photos — ${trip.vendor || trip.date || "Saved Trip"}`;
+    status.textContent = "Loading saved photos…";
     gallery.innerHTML = "";
     panel.scrollIntoView({ behavior: "smooth", block: "start" });
 
@@ -1590,8 +1590,8 @@ ${fallbackError.message || error.message}`);
       row.innerHTML = `
         <div>
           <strong>${escapeHTML(vendor.name)}</strong>
-          <small>${escapeHTML(vendor.taskLocation || "No STA task location")} â€¢ ${escapeHTML(vendor.safetyContact || "No safety contact")}${vendor.safetyPhone ? ` â€¢ ${escapeHTML(vendor.safetyPhone)}` : ""}</small>
-          <small>${Number(vendor.latitude).toFixed(6)}, ${Number(vendor.longitude).toFixed(6)} â€¢ ${formatNumber(vendor.radiusMiles, true)} mi radius</small>
+          <small>${escapeHTML(vendor.taskLocation || "No STA task location")} • ${escapeHTML(vendor.safetyContact || "No safety contact")}${vendor.safetyPhone ? ` • ${escapeHTML(vendor.safetyPhone)}` : ""}</small>
+          <small>${Number(vendor.latitude).toFixed(6)}, ${Number(vendor.longitude).toFixed(6)} • ${formatNumber(vendor.radiusMiles, true)} mi radius</small>
         </div>
         <button class="button button-danger-outline button-small" type="button" data-delete-vendor-location="${escapeHTML(vendor.id)}">Remove</button>
       `;
@@ -1747,7 +1747,7 @@ ${fallbackError.message || error.message}`);
 
       installStatus.innerHTML = `
         <strong>${escapeHTML(record.name || "STA master PDF")}</strong><br>
-        Stored privately on this device â€¢ ${escapeHTML(formatFileSize(record.size))} â€¢ imported ${escapeHTML(importedDate)}
+        Stored privately on this device • ${escapeHTML(formatFileSize(record.size))} • imported ${escapeHTML(importedDate)}
       `;
       installStatus.className = "private-master-status installed";
       masterPill.textContent = "INSTALLED";
@@ -1841,8 +1841,8 @@ ${fallbackError.message || error.message}`);
     const saved = trip.staData || {};
 
     $("staSourceSummary").innerHTML = `
-      <strong>${escapeHTML(trip.customer)} â€” ${escapeHTML(trip.vendor)}</strong><br>
-      ${escapeHTML(trip.purpose)} â€¢ ${escapeHTML(trip.date)} ${escapeHTML(trip.startTime)}<br>
+      <strong>${escapeHTML(trip.customer)} — ${escapeHTML(trip.vendor)}</strong><br>
+      ${escapeHTML(trip.purpose)} • ${escapeHTML(trip.date)} ${escapeHTML(trip.startTime)}<br>
       ${trip.staGenerated ? `Last generated: ${escapeHTML(trip.staFileName || "STA PDF")}` : "No STA has been generated for this trip yet."}
     `;
 
@@ -1982,7 +1982,7 @@ ${fallbackError.message || error.message}`);
     const buttons = [$("shareStaBtn"), $("downloadStaBtn")];
 
     buttons.forEach((button) => { button.disabled = true; });
-    status.textContent = "Generating a flattened STA PDF from the locked masterâ€¦";
+    status.textContent = "Generating a flattened STA PDF from the locked master…";
     status.className = "gps-status";
 
     try {
@@ -2234,8 +2234,8 @@ ${fallbackError.message || error.message}`);
 
     showToast(
       difference >= Number(state.settings.differenceWarning)
-        ? `Trip saved locally. GPS difference: ${formatNumber(difference, true)} miles. Opening required backupâ€¦`
-        : `Trip saved locally: ${formatNumber(miles, true)} miles. Opening required backupâ€¦`
+        ? `Trip saved locally. GPS difference: ${formatNumber(difference, true)} miles. Opening required backup…`
+        : `Trip saved locally: ${formatNumber(miles, true)} miles. Opening required backup…`
     );
 
     const backupConfirmed = await saveFullBackupToFiles({ automatic: true });
@@ -2521,7 +2521,7 @@ ${fallbackError.message || error.message}`);
 
     const installStatus = $("staMasterInstallStatus");
     $("importStaMasterBtn").disabled = true;
-    installStatus.textContent = "Validating and storing the STA master privately on this deviceâ€¦";
+    installStatus.textContent = "Validating and storing the STA master privately on this device…";
     installStatus.className = "private-master-status";
 
     try {
