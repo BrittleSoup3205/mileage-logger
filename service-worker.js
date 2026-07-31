@@ -1,11 +1,11 @@
-const CACHE_NAME = "mileage-logger-inspection-workflow-v30";
+const CACHE_NAME = "mileage-logger-inspection-workflow-v31";
 const APP_FILES = [
   "./",
   "./index.html",
-  "./styles.css?v=inspection-workflow-2",
-  "./app.js?v=inspection-workflow-2",
-  "./inspections.js?v=inspection-workflow-2",
-  "./media-store.js?v=inspection-workflow-2",
+  "./styles.css?v=inspection-workflow-3",
+  "./app.js?v=inspection-workflow-3",
+  "./inspections.js?v=inspection-workflow-3",
+  "./media-store.js?v=inspection-workflow-3",
   "./vendor/pdf-lib.min.js",
   "./vendor/fflate.min.js",
   "./manifest.webmanifest",
