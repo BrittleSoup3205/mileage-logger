@@ -1,11 +1,11 @@
-const CACHE_NAME = "mileage-logger-coordinate-entry-v34";
+const CACHE_NAME = "mileage-logger-optional-facility-gps-v35";
 const APP_FILES = [
   "./",
   "./index.html",
-  "./styles.css?v=coordinate-entry-1",
-  "./app.js?v=coordinate-entry-1",
-  "./inspections.js?v=coordinate-entry-1",
-  "./media-store.js?v=coordinate-entry-1",
+  "./styles.css?v=optional-facility-gps-1",
+  "./app.js?v=optional-facility-gps-1",
+  "./inspections.js?v=optional-facility-gps-1",
+  "./media-store.js?v=optional-facility-gps-1",
   "./vendor/pdf-lib.min.js",
   "./vendor/fflate.min.js",
   "./manifest.webmanifest",
