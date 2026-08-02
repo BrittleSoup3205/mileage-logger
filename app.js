@@ -157,6 +157,32 @@
     return parseNumber(value);
   }
 
+  function formatPhoneNumber(value) {
+    const raw = String(value ?? "");
+    if (!raw || raw.startsWith("+") || !/^[\d-]+$/.test(raw)) return raw;
+
+    const digits = raw.replace(/\D/g, "");
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+    if (digits.length <= 10) {
+      return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+    }
+    if (digits.length === 11 && digits.startsWith("1")) {
+      return `1-${digits.slice(1, 4)}-${digits.slice(4, 7)}-${digits.slice(7)}`;
+    }
+    return raw;
+  }
+
+  function enablePhoneFormatting(input) {
+    if (!input) return;
+    input.addEventListener("input", () => {
+      const formatted = formatPhoneNumber(input.value);
+      if (formatted === input.value) return;
+      input.value = formatted;
+      input.setSelectionRange(formatted.length, formatted.length);
+    });
+  }
+
   function formatNumber(value, forceOneDecimal = false) {
     const number = Number(value);
     if (!Number.isFinite(number)) return "";
@@ -1851,7 +1877,7 @@ ${fallbackError.message || error.message}`);
     $("staTime").value = saved.time ?? trip.startTime ?? "";
     $("staTaskLocation").value = saved.taskLocation ?? profile?.taskLocation ?? trip.vendor ?? "";
     $("staSafetyContact").value = saved.safetyContact ?? profile?.safetyContact ?? "";
-    $("staSafetyPhone").value = saved.safetyPhone ?? profile?.safetyPhone ?? "";
+    $("staSafetyPhone").value = formatPhoneNumber(saved.safetyPhone ?? profile?.safetyPhone ?? "");
 
     $("shareStaBtn").disabled = true;
     $("downloadStaBtn").disabled = true;
@@ -1869,7 +1895,7 @@ ${fallbackError.message || error.message}`);
       time: $("staTime").value.trim(),
       taskLocation: $("staTaskLocation").value.trim(),
       safetyContact: $("staSafetyContact").value.trim(),
-      safetyPhone: $("staSafetyPhone").value.trim()
+      safetyPhone: formatPhoneNumber($("staSafetyPhone").value.trim())
     };
   }
 
@@ -2434,7 +2460,7 @@ ${fallbackError.message || error.message}`);
     const name = $("vendorLocationName").value.trim();
     const taskLocation = $("vendorTaskLocation").value.trim();
     const safetyContact = $("vendorSafetyContact").value.trim();
-    const safetyPhone = $("vendorSafetyPhone").value.trim();
+    const safetyPhone = formatPhoneNumber($("vendorSafetyPhone").value.trim());
     const latitude = parseNumber($("vendorLatitude").value);
     const longitude = parseNumber($("vendorLongitude").value);
     const radiusMiles = parseNumber($("vendorRadius").value);
@@ -2608,6 +2634,9 @@ ${fallbackError.message || error.message}`);
     });
   }
 
+  enablePhoneFormatting($("staSafetyPhone"));
+  enablePhoneFormatting($("vendorSafetyPhone"));
+
   renderAll();
   handleActionParameter();
 
@@ -2615,4 +2644,3 @@ ${fallbackError.message || error.message}`);
     setTimeout(startRouteTracking, 400);
   }
 })();
-
