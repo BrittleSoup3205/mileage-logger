@@ -11,7 +11,7 @@
   <title>Mileage Logger GPS</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=inspection-workflow-4">
+  <link rel="stylesheet" href="./styles.css?v=phone-formatting-1">
 </head>
 <body>
   <header class="topbar">
@@ -255,7 +255,8 @@
           </label>
           <label>
             Safety contact phone
-            <input id="staSafetyPhone" inputmode="tel" placeholder="(000) 000-0000">
+            <input id="staSafetyPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="222-222-2222">
+            <small>Enter the digits normally; the app adds hyphens automatically.</small>
           </label>
         </div>
 
@@ -446,7 +447,8 @@
           </label>
           <label>
             Safety phone
-            <input id="vendorSafetyPhone" inputmode="tel" placeholder="(000) 000-0000">
+            <input id="vendorSafetyPhone" type="tel" inputmode="tel" autocomplete="tel" placeholder="222-222-2222">
+            <small>Enter the digits normally; the app adds hyphens automatically.</small>
           </label>
         </div>
         <div class="coordinate-grid">
@@ -504,10 +506,9 @@
 
   <script src="./vendor/pdf-lib.min.js"></script>
   <script src="./vendor/fflate.min.js"></script>
-  <script src="./media-store.js?v=inspection-workflow-4"></script>
-  <script src="./app.js?v=inspection-workflow-4"></script>
-  <script src="./inspections.js?v=inspection-workflow-4"></script>
+  <script src="./media-store.js?v=phone-formatting-1"></script>
+  <script src="./app.js?v=phone-formatting-1"></script>
+  <script src="./inspections.js?v=phone-formatting-1"></script>
 </body>
 </html>
-
 
