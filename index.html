@@ -11,7 +11,7 @@
   <title>Mileage Logger GPS</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=phone-formatting-1">
+  <link rel="stylesheet" href="./styles.css?v=coordinate-entry-1">
 </head>
 <body>
   <header class="topbar">
@@ -454,11 +454,13 @@
         <div class="coordinate-grid">
           <label>
             Latitude
-            <input id="vendorLatitude" inputmode="decimal" placeholder="30.000000">
+            <input id="vendorLatitude" type="text" inputmode="text" autocapitalize="off" spellcheck="false" placeholder="30.000000">
+            <small>The full keyboard is available for decimal points and coordinate signs.</small>
           </label>
           <label>
             Longitude
-            <input id="vendorLongitude" inputmode="decimal" placeholder="-90.000000">
+            <input id="vendorLongitude" type="text" inputmode="text" autocapitalize="off" spellcheck="false" placeholder="-90.000000">
+            <small>Include the minus sign for western longitudes, such as -90.123456.</small>
           </label>
           <label>
             Recognition radius, miles
@@ -469,6 +471,7 @@
           <button id="useCurrentVendorGpsBtn" class="button button-secondary" type="button">Use Current GPS</button>
           <button id="saveVendorLocationBtn" class="button button-secondary" type="button">Save Facility Profile</button>
         </div>
+        <div id="vendorGpsStatus" class="gps-status">No vendor GPS captured.</div>
       </div>
 
       <div id="vendorLocationsList" class="vendor-locations-list"></div>
@@ -506,9 +509,9 @@
 
   <script src="./vendor/pdf-lib.min.js"></script>
   <script src="./vendor/fflate.min.js"></script>
-  <script src="./media-store.js?v=phone-formatting-1"></script>
-  <script src="./app.js?v=phone-formatting-1"></script>
-  <script src="./inspections.js?v=phone-formatting-1"></script>
+  <script src="./media-store.js?v=coordinate-entry-1"></script>
+  <script src="./app.js?v=coordinate-entry-1"></script>
+  <script src="./inspections.js?v=coordinate-entry-1"></script>
 </body>
 </html>
 
