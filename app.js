@@ -783,6 +783,12 @@
     if (!location || !Array.isArray(state.settings.vendorLocations)) return null;
 
     const matches = state.settings.vendorLocations
+      .filter((vendor) =>
+        vendor.latitude !== null && vendor.latitude !== "" &&
+        vendor.longitude !== null && vendor.longitude !== "" &&
+        Number.isFinite(Number(vendor.latitude)) &&
+        Number.isFinite(Number(vendor.longitude))
+      )
       .map((vendor) => ({
         ...vendor,
         distanceMiles: haversineMiles(location, vendor)
@@ -1613,11 +1619,16 @@ ${fallbackError.message || error.message}`);
     state.settings.vendorLocations.forEach((vendor) => {
       const row = document.createElement("div");
       row.className = "vendor-location-row";
+      const hasGps = vendor.latitude !== null && vendor.latitude !== "" &&
+        vendor.longitude !== null && vendor.longitude !== "" &&
+        Number.isFinite(Number(vendor.latitude)) && Number.isFinite(Number(vendor.longitude));
       row.innerHTML = `
         <div>
           <strong>${escapeHTML(vendor.name)}</strong>
           <small>${escapeHTML(vendor.taskLocation || "No STA task location")} • ${escapeHTML(vendor.safetyContact || "No safety contact")}${vendor.safetyPhone ? ` • ${escapeHTML(vendor.safetyPhone)}` : ""}</small>
-          <small>${Number(vendor.latitude).toFixed(6)}, ${Number(vendor.longitude).toFixed(6)} • ${formatNumber(vendor.radiusMiles, true)} mi radius</small>
+          <small>${hasGps
+            ? `${Number(vendor.latitude).toFixed(6)}, ${Number(vendor.longitude).toFixed(6)} • ${formatNumber(vendor.radiusMiles, true)} mi radius`
+            : "GPS recognition not configured"}</small>
         </div>
         <button class="button button-danger-outline button-small" type="button" data-delete-vendor-location="${escapeHTML(vendor.id)}">Remove</button>
       `;
@@ -2456,26 +2467,43 @@ ${fallbackError.message || error.message}`);
     );
   });
 
+  $("clearVendorGpsBtn").addEventListener("click", () => {
+    pendingVendorGps = null;
+    $("vendorLatitude").value = "";
+    $("vendorLongitude").value = "";
+    $("vendorGpsStatus").textContent = "GPS recognition will not be used for this facility.";
+    $("vendorGpsStatus").className = "gps-status";
+  });
+
   $("saveVendorLocationBtn").addEventListener("click", () => {
     const name = $("vendorLocationName").value.trim();
     const taskLocation = $("vendorTaskLocation").value.trim();
     const safetyContact = $("vendorSafetyContact").value.trim();
     const safetyPhone = formatPhoneNumber($("vendorSafetyPhone").value.trim());
-    const latitude = parseNumber($("vendorLatitude").value);
-    const longitude = parseNumber($("vendorLongitude").value);
+    const latitudeText = $("vendorLatitude").value.trim();
+    const longitudeText = $("vendorLongitude").value.trim();
+    const hasGps = Boolean(latitudeText || longitudeText);
+    const latitude = latitudeText ? parseNumber(latitudeText) : null;
+    const longitude = longitudeText ? parseNumber(longitudeText) : null;
     const radiusMiles = parseNumber($("vendorRadius").value);
 
     if (!name) {
       window.alert("Enter a vendor name.");
       return;
     }
-    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
-      window.alert("Enter a valid latitude between -90 and 90.");
-      return;
-    }
-    if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
-      window.alert("Enter a valid longitude between -180 and 180.");
-      return;
+    if (hasGps) {
+      if (!latitudeText || !longitudeText) {
+        window.alert("Enter both GPS coordinates, or leave both blank. You can also tap Use Current GPS while at the facility.");
+        return;
+      }
+      if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) {
+        window.alert("Enter a valid latitude between -90 and 90.");
+        return;
+      }
+      if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+        window.alert("Enter a valid longitude between -180 and 180.");
+        return;
+      }
     }
     if (!Number.isFinite(radiusMiles) || radiusMiles <= 0) {
       window.alert("Enter a recognition radius greater than zero.");
