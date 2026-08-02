@@ -1,11 +1,11 @@
-const CACHE_NAME = "mileage-logger-phone-formatting-v33";
+const CACHE_NAME = "mileage-logger-coordinate-entry-v34";
 const APP_FILES = [
   "./",
   "./index.html",
-  "./styles.css?v=phone-formatting-1",
-  "./app.js?v=phone-formatting-1",
-  "./inspections.js?v=phone-formatting-1",
-  "./media-store.js?v=phone-formatting-1",
+  "./styles.css?v=coordinate-entry-1",
+  "./app.js?v=coordinate-entry-1",
+  "./inspections.js?v=coordinate-entry-1",
+  "./media-store.js?v=coordinate-entry-1",
   "./vendor/pdf-lib.min.js",
   "./vendor/fflate.min.js",
   "./manifest.webmanifest",
