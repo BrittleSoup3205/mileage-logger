@@ -1,11 +1,11 @@
-const CACHE_NAME = "mileage-logger-inspection-workflow-v32";
+const CACHE_NAME = "mileage-logger-phone-formatting-v33";
 const APP_FILES = [
   "./",
   "./index.html",
-  "./styles.css?v=inspection-workflow-4",
-  "./app.js?v=inspection-workflow-4",
-  "./inspections.js?v=inspection-workflow-4",
-  "./media-store.js?v=inspection-workflow-4",
+  "./styles.css?v=phone-formatting-1",
+  "./app.js?v=phone-formatting-1",
+  "./inspections.js?v=phone-formatting-1",
+  "./media-store.js?v=phone-formatting-1",
   "./vendor/pdf-lib.min.js",
   "./vendor/fflate.min.js",
   "./manifest.webmanifest",
@@ -46,5 +46,4 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
-
 
