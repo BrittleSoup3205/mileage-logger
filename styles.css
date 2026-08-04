@@ -746,6 +746,29 @@ hr {
   gap: 10px;
 }
 
+.backup-ready-panel {
+  margin-top: 14px;
+  padding: 16px;
+  border: 2px solid var(--success);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--success), transparent 94%);
+}
+
+.backup-ready-panel h3 {
+  margin: 4px 0 12px;
+}
+
+.backup-ready-summary {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 12px;
+  overflow-wrap: anywhere;
+}
+
+.backup-ready-summary span {
+  color: var(--muted);
+}
+
 .button-backup {
   color: #ffffff;
   background: #137333;
