@@ -622,7 +622,7 @@
           <input id="inspectionSearch" class="search-input" placeholder="Search project, vendor, type, summary, or follow-up">
           <select id="inspectionFilter" aria-label="Filter inspections">
             <option value="all">All inspections</option>
-            <option value="needs-backup">Needs full backup</option>
+              <option value="needs-backup">Needs data backup</option>
             <option value="not-exported">Not exported</option>
             <option value="export-outdated">Changed since export</option>
             <option value="incomplete">Incomplete or on hold</option>
@@ -723,9 +723,9 @@
     const current = inspectionBackupIsCurrent(state);
     notice.classList.toggle("current", current);
     notice.innerHTML = current
-      ? `<div><strong>Inspection backup is current.</strong><br><small>The latest inspection changes are included in a confirmed full backup.</small></div>`
-      : `<div><strong>Inspection changes need a full backup.</strong><br><small>Save the app's ZIP restore file so the inspection database and photos are protected.</small></div>
-         <button id="backupInspectionChangesBtn" class="button button-backup button-small" type="button">Back Up Changes</button>`;
+      ? `<div><strong>Inspection data backup is current.</strong><br><small>Record details, photo filenames, and descriptions are included. Actual image files use the separate inspection-photo backup.</small></div>`
+      : `<div><strong>Inspection changes need a data backup.</strong><br><small>Save the small data ZIP now, then use Save Inspection Photos when image files change.</small></div>
+         <button id="backupInspectionChangesBtn" class="button button-backup button-small" type="button">Back Up Inspection Data</button>`;
   }
 
   function renderTripOptions(state, selectedTripId) {
@@ -956,7 +956,7 @@
           </div>
           <span id="inspectionPhotoCount" class="pill">0</span>
         </div>
-        <p class="muted">Photos are reduced to a practical size and included in the required ZIP backup.</p>
+          <p class="muted">Photos are reduced to a practical size. Filenames and descriptions go in the data backup; image files go in the separate inspection-photo backup.</p>
         <div class="form-actions wrap">
           <button id="takeInspectionPhotoBtn" class="button inspection-button button-small" type="button">Take Photo</button>
           <button id="chooseInspectionPhotosBtn" class="button button-secondary button-small" type="button">Choose Photos</button>
@@ -2496,7 +2496,7 @@
     try {
       const entries = {
         ["00_READ_ME_FIRST.txt"]: window.fflate.strToU8(
-          `SELECTED INSPECTION HANDOFFS\r\n\r\nThis ZIP contains ${inspections.length} selected inspection package${inspections.length === 1 ? "" : "s"}, one per folder.\r\nThis is a handoff/export file. Keep using Save Full Backup to Files for a complete app restore backup.\r\n`
+        `SELECTED INSPECTION HANDOFFS\r\n\r\nThis ZIP contains ${inspections.length} selected inspection package${inspections.length === 1 ? "" : "s"}, one per folder.\r\nThis is a handoff/export file. Keep using Save Full Data Backup for records and Save Inspection Photos for restorable image files.\r\n`
         )
       };
       for (let index = 0; index < inspections.length; index += 1) {
@@ -2669,7 +2669,7 @@
       if (event.target.closest("#backupInspectionChangesBtn")) {
         const backupButton = $("backupNowBtn") || $("backupBtn");
         if (backupButton) backupButton.click();
-        else window.alert("Open the Mileage Logger page and use Save Full Backup to protect the inspection changes.");
+        else window.alert("Open the Mileage Logger page and use Save Full Data Backup to protect the inspection changes.");
         return;
       }
 
@@ -2911,7 +2911,6 @@
     initialize();
   }
 })();
-
 
 
 
