@@ -11,7 +11,7 @@
   <title>Mileage Logger GPS</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=optional-facility-gps-1">
+  <link rel="stylesheet" href="./styles.css?v=backup-share-tap-2">
 </head>
 <body>
   <header class="topbar">
@@ -59,6 +59,18 @@
         <button id="backupCsvBtn" class="button button-secondary" type="button">Export CSV Copy</button>
         <button id="restoreBackupBtn" class="button button-secondary" type="button">Restore a Backup</button>
       </div>
+
+      <section id="backupReadyPanel" class="backup-ready-panel hidden" aria-labelledby="backupReadyTitle">
+        <p class="eyebrow">Backup prepared</p>
+        <h3 id="backupReadyTitle">Ready to Save Outside the App</h3>
+        <div id="backupReadySummary" class="backup-ready-summary"></div>
+        <p id="backupReadyStatus" class="gps-status good">Tap Open Save to Files, then choose Save to Files in the iPhone share sheet.</p>
+        <div class="form-actions wrap">
+          <button id="sharePreparedBackupBtn" class="button button-backup" type="button">Open Save to Files</button>
+          <button id="downloadPreparedBackupBtn" class="button button-secondary" type="button">Download ZIP Instead</button>
+          <button id="cancelPreparedBackupBtn" class="button button-quiet" type="button">Cancel</button>
+        </div>
+      </section>
 
       <p class="privacy-note compact-note">
         After every completed trip, the app opens the iPhone share sheet with a complete ZIP restore file.
@@ -514,9 +526,9 @@
 
   <script src="./vendor/pdf-lib.min.js"></script>
   <script src="./vendor/fflate.min.js"></script>
-  <script src="./media-store.js?v=optional-facility-gps-1"></script>
-  <script src="./app.js?v=optional-facility-gps-1"></script>
-  <script src="./inspections.js?v=optional-facility-gps-1"></script>
+  <script src="./media-store.js?v=backup-share-tap-2"></script>
+  <script src="./app.js?v=backup-share-tap-2"></script>
+  <script src="./inspections.js?v=backup-share-tap-2"></script>
 </body>
 </html>
 

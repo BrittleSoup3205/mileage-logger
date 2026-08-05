@@ -53,6 +53,7 @@
   let staMasterBytesPromise = null;
   let activeTripPhotoObjectUrls = [];
   let tripLogPhotoObjectUrls = [];
+  let preparedBackupSession = null;
 
   function defaultState() {
     return {
@@ -1455,78 +1456,21 @@
     renderAll();
   }
 
-  async function saveFullBackupToFiles(options = {}) {
-    const automatic = Boolean(options.automatic);
-    let backup;
-    try {
-      backup = await createBackupFile();
-    } catch (error) {
-      console.error("Backup creation failed:", error);
-      window.alert(`The full ZIP backup could not be created.\n\n${error.message}`);
-      return false;
-    }
-    const summary = backup.summary;
-    const continueToSave = window.confirm(
-      `Full restore backup is ready.\n\n`
-      + `${summary.completedTrips} completed trip${summary.completedTrips === 1 ? "" : "s"}\n`
-      + `${summary.activeTrips} active trip${summary.activeTrips === 1 ? "" : "s"}\n`
-      + `${summary.inspections} inspection record${summary.inspections === 1 ? "" : "s"}\n`
-      + `${summary.photos} stored photo${summary.photos === 1 ? "" : "s"}\n`
-      + `Settings and saved lists\n`
-      + `File size: ${formatFileSize(summary.bytes)}\n\n`
-      + `Continue to Save to Files?`
-    );
-    if (!continueToSave) {
-      renderBackupStatus();
-      showToast("Backup canceled. No data was changed.");
-      return false;
-    }
-    let handoffCompleted = false;
+  function closePreparedBackup(result) {
+    if (!preparedBackupSession) return;
+    const session = preparedBackupSession;
+    preparedBackupSession = null;
+    $("backupReadyPanel").classList.add("hidden");
+    $("sharePreparedBackupBtn").disabled = false;
+    $("downloadPreparedBackupBtn").disabled = false;
+    $("backupNowBtn").disabled = false;
+    $("backupNowBtn").textContent = "Save Full Backup to Files";
+    session.resolve(Boolean(result));
+  }
 
-    try {
-      const canShareFile = Boolean(
-        navigator.share &&
-        (!navigator.canShare || navigator.canShare({ files: [backup.file] }))
-      );
-
-      if (canShareFile) {
-        await navigator.share({
-          title: "Mileage Logger Full Backup",
-          text: "Choose Save to Files, select an iCloud Drive folder, then tap Save.",
-          files: [backup.file]
-        });
-        handoffCompleted = true;
-      } else {
-        downloadFile(backup.filename, backup.blob, "application/zip");
-        handoffCompleted = true;
-        window.alert(
-          "The backup file was downloaded. Make sure it is saved or moved into iCloud Drive or another safe folder."
-        );
-      }
-    } catch (error) {
-      if (error?.name === "AbortError") {
-        showToast("Backup canceled. Backup is still required.");
-      } else {
-        console.error("Backup share failed:", error);
-        try {
-          downloadFile(backup.filename, backup.blob, "application/zip");
-          handoffCompleted = true;
-          window.alert(
-            "The share sheet could not be used, so the backup was downloaded instead. Save or move it into iCloud Drive or another safe folder."
-          );
-        } catch (fallbackError) {
-          window.alert(`The backup could not be created.
-
-${fallbackError.message || error.message}`);
-        }
-      }
-    }
-
-    if (!handoffCompleted) {
-      renderBackupStatus();
-      return false;
-    }
-
+  function confirmPreparedBackupSaved() {
+    if (!preparedBackupSession) return;
+    const { backup, automatic } = preparedBackupSession;
     const confirmed = window.confirm(
       "Did you save the backup file to Files, iCloud Drive, OneDrive, Google Drive, or another location outside this app?\n\nTap OK only after the file has been saved."
     );
@@ -1534,12 +1478,59 @@ ${fallbackError.message || error.message}`);
     if (confirmed) {
       markBackupConfirmed(backup.filename);
       showToast(automatic ? "Trip saved and backup confirmed." : "Full backup confirmed.");
-      return true;
+      closePreparedBackup(true);
+      return;
     }
 
-    renderBackupStatus();
-    showToast("Backup remains required until you confirm the external save.");
-    return false;
+    $("backupReadyStatus").textContent = "Backup is still required. Tap Open Save to Files to try again, or Cancel to leave it pending.";
+    $("backupReadyStatus").className = "gps-status warn";
+  }
+
+  function showPreparedBackup(backup, automatic) {
+    const summary = backup.summary;
+    $("backupReadySummary").innerHTML = `
+      <strong>${escapeHTML(backup.filename)}</strong>
+      <span>${summary.completedTrips} completed trip${summary.completedTrips === 1 ? "" : "s"}</span>
+      <span>${summary.activeTrips} active trip${summary.activeTrips === 1 ? "" : "s"}</span>
+      <span>${summary.inspections} inspection record${summary.inspections === 1 ? "" : "s"}</span>
+      <span>${summary.photos} stored photo${summary.photos === 1 ? "" : "s"}</span>
+      <span>Settings and saved lists</span>
+      <span>File size: ${formatFileSize(summary.bytes)}</span>
+    `;
+    $("backupReadyStatus").textContent = "Tap Open Save to Files, then choose Save to Files in the iPhone share sheet.";
+    $("backupReadyStatus").className = "gps-status good";
+    $("backupReadyPanel").classList.remove("hidden");
+    $("backupReadyPanel").scrollIntoView({ behavior: "smooth", block: "center" });
+
+    return new Promise((resolve) => {
+      preparedBackupSession = { backup, automatic, resolve };
+    });
+  }
+
+  async function saveFullBackupToFiles(options = {}) {
+    if (preparedBackupSession) {
+      $("backupReadyPanel").scrollIntoView({ behavior: "smooth", block: "center" });
+      return preparedBackupSession.promise;
+    }
+
+    const automatic = Boolean(options.automatic);
+    $("backupNowBtn").disabled = true;
+    $("backupNowBtn").textContent = "Preparing Backup…";
+
+    let backup;
+    try {
+      backup = await createBackupFile();
+    } catch (error) {
+      console.error("Backup creation failed:", error);
+      $("backupNowBtn").disabled = false;
+      $("backupNowBtn").textContent = "Save Full Backup to Files";
+      window.alert(`The full ZIP backup could not be created.\n\n${error.message}`);
+      return false;
+    }
+
+    const resultPromise = showPreparedBackup(backup, automatic);
+    preparedBackupSession.promise = resultPromise;
+    return resultPromise;
   }
 
   function backupData() {
@@ -2425,6 +2416,52 @@ ${fallbackError.message || error.message}`);
   $("backupNowBtn").addEventListener("click", backupData);
   $("backupCsvBtn").addEventListener("click", exportCSV);
   $("restoreBackupBtn").addEventListener("click", () => $("importFile").click());
+  $("sharePreparedBackupBtn").addEventListener("click", async () => {
+    if (!preparedBackupSession) return;
+    const { backup } = preparedBackupSession;
+    const canShareFile = Boolean(
+      navigator.share &&
+      (!navigator.canShare || navigator.canShare({ files: [backup.file] }))
+    );
+
+    if (!canShareFile) {
+      $("backupReadyStatus").textContent = "This browser cannot share the ZIP directly. Tap Download ZIP Instead, then move it to Files or iCloud Drive.";
+      $("backupReadyStatus").className = "gps-status warn";
+      return;
+    }
+
+    $("sharePreparedBackupBtn").disabled = true;
+    try {
+      const shareOperation = navigator.share({
+        title: "Mileage Logger Full Backup",
+        text: "Choose Save to Files, select an iCloud Drive folder, then tap Save.",
+        files: [backup.file]
+      });
+      await shareOperation;
+      confirmPreparedBackupSaved();
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        $("backupReadyStatus").textContent = "The share sheet was closed. Tap Open Save to Files when you are ready to try again.";
+        $("backupReadyStatus").className = "gps-status warn";
+      } else {
+        console.warn("Backup share unavailable:", error);
+        $("backupReadyStatus").textContent = "The share sheet is unavailable. Tap Download ZIP Instead, then move the file to Files or iCloud Drive.";
+        $("backupReadyStatus").className = "gps-status warn";
+      }
+    } finally {
+      $("sharePreparedBackupBtn").disabled = false;
+    }
+  });
+  $("downloadPreparedBackupBtn").addEventListener("click", () => {
+    if (!preparedBackupSession) return;
+    const { backup } = preparedBackupSession;
+    downloadFile(backup.filename, backup.blob, "application/zip");
+    confirmPreparedBackupSaved();
+  });
+  $("cancelPreparedBackupBtn").addEventListener("click", () => {
+    showToast("Backup remains required until it is saved outside the app.");
+    closePreparedBackup(false);
+  });
   $("backupBtn").addEventListener("click", backupData);
   $("importBtn").addEventListener("click", () => $("importFile").click());
 
