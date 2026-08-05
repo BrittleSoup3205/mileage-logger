@@ -785,14 +785,9 @@ hr {
   background: var(--danger);
 }
 
-.pill.pending {
-  color: #6f4b00;
-  background: color-mix(in srgb, var(--warning), transparent 78%);
-}
-
-.backup-ready-summary .warn {
-  color: var(--danger);
-  font-weight: 700;
+.backup-photo-notice {
+  color: var(--muted);
+  font-size: .92rem;
 }
 
 .required-backup-note {

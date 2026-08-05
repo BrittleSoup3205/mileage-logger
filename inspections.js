@@ -723,8 +723,8 @@
     const current = inspectionBackupIsCurrent(state);
     notice.classList.toggle("current", current);
     notice.innerHTML = current
-      ? `<div><strong>Inspection data backup is current.</strong><br><small>Record details, photo filenames, and descriptions are included. Actual image files use the separate inspection-photo backup.</small></div>`
-      : `<div><strong>Inspection changes need a data backup.</strong><br><small>Save the small data ZIP now, then use Save Inspection Photos when image files change.</small></div>
+      ? `<div><strong>Inspection data backup is current.</strong><br><small>Record details, photo filenames, and descriptions are included. Actual images are not included; retain originals in iPhone Photos.</small></div>`
+      : `<div><strong>Inspection changes need a data backup.</strong><br><small>Save the small data ZIP now. Actual images are not included; retain originals in iPhone Photos.</small></div>
          <button id="backupInspectionChangesBtn" class="button button-backup button-small" type="button">Back Up Inspection Data</button>`;
   }
 
@@ -956,7 +956,7 @@
           </div>
           <span id="inspectionPhotoCount" class="pill">0</span>
         </div>
-          <p class="muted">Photos are reduced to a practical size. Filenames and descriptions go in the data backup; image files go in the separate inspection-photo backup.</p>
+          <p class="muted">Photos are reduced to a practical size for use in this app. Backups contain filenames and descriptions only; retain original images in iPhone Photos.</p>
         <div class="form-actions wrap">
           <button id="takeInspectionPhotoBtn" class="button inspection-button button-small" type="button">Take Photo</button>
           <button id="chooseInspectionPhotosBtn" class="button button-secondary button-small" type="button">Choose Photos</button>
@@ -2496,7 +2496,7 @@
     try {
       const entries = {
         ["00_READ_ME_FIRST.txt"]: window.fflate.strToU8(
-        `SELECTED INSPECTION HANDOFFS\r\n\r\nThis ZIP contains ${inspections.length} selected inspection package${inspections.length === 1 ? "" : "s"}, one per folder.\r\nThis is a handoff/export file. Keep using Save Full Data Backup for records and Save Inspection Photos for restorable image files.\r\n`
+        `SELECTED INSPECTION HANDOFFS\r\n\r\nThis ZIP contains ${inspections.length} selected inspection package${inspections.length === 1 ? "" : "s"}, one per folder, including its currently attached photos.\r\nThis is a handoff/export file. Keep using Save Full Data Backup for restorable app records; retain original images in iPhone Photos.\r\n`
         )
       };
       for (let index = 0; index < inspections.length; index += 1) {
