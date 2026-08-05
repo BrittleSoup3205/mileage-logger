@@ -41,7 +41,11 @@
     lastConfirmedISO: null,
     lastConfirmedTripCount: 0,
     lastFilename: "",
-    lastRequiredISO: null
+    lastRequiredISO: null,
+    lastPhotoConfirmedISO: null,
+    lastPhotoFilename: "",
+    lastPhotoCount: 0,
+    lastPhotoIds: []
   };
 
   const $ = (id) => document.getElementById(id);
@@ -217,11 +221,39 @@
     state.backup = { ...DEFAULT_BACKUP_STATE, ...state.backup };
     state.backup.pendingTripCount = Math.max(0, Number(state.backup.pendingTripCount || 0));
     state.backup.pendingChangeCount = Math.max(0, Number(state.backup.pendingChangeCount || 0));
+    state.backup.lastPhotoIds = Array.isArray(state.backup.lastPhotoIds)
+      ? state.backup.lastPhotoIds.filter(Boolean)
+      : [];
   }
 
   function backupIsRequired() {
     ensureBackupState();
     return state.backup.pendingTripCount > 0 || state.backup.pendingChangeCount > 0;
+  }
+
+  function inspectionPhotoMetadata() {
+    const inspections = Array.isArray(state.settings?.inspections) ? state.settings.inspections : [];
+    const byId = new Map();
+    inspections.forEach((inspection) => {
+      (inspection.photos || []).forEach((photo) => {
+        if (!photo?.id) return;
+        byId.set(photo.id, {
+          ...photo,
+          inspectionId: inspection.id,
+          inspectionDate: inspection.inspectionDate || inspection.date || "",
+          inspectionTitle: inspection.title || inspection.vendor || inspection.customer || "Inspection"
+        });
+      });
+    });
+    return [...byId.values()];
+  }
+
+  function photoBackupIsRequired() {
+    ensureBackupState();
+    const currentIds = inspectionPhotoMetadata().map((photo) => photo.id).sort();
+    if (!currentIds.length) return false;
+    const savedIds = [...state.backup.lastPhotoIds].sort();
+    return currentIds.length !== savedIds.length || currentIds.some((id, index) => id !== savedIds[index]);
   }
 
   function formatBackupDate(iso) {
@@ -243,7 +275,12 @@
     const text = $("backupStatusText");
     if (!pill || !text) return;
 
-    if (backupIsRequired()) {
+    const dataRequired = backupIsRequired();
+    const photosRequired = photoBackupIsRequired();
+    const photoCount = inspectionPhotoMetadata().length;
+    let dataStatus;
+
+    if (dataRequired) {
       const pendingParts = [];
       if (state.backup.pendingTripCount > 0) {
         pendingParts.push(`${state.backup.pendingTripCount} completed trip${state.backup.pendingTripCount === 1 ? "" : "s"}`);
@@ -251,24 +288,25 @@
       if (state.backup.pendingChangeCount > 0) {
         pendingParts.push(`${state.backup.pendingChangeCount} saved record change${state.backup.pendingChangeCount === 1 ? "" : "s"}`);
       }
-      pill.textContent = "BACKUP REQUIRED";
-      pill.className = "pill backup-required";
-      text.innerHTML = `
-        <strong>${escapeHTML(pendingParts.join(" and "))} not yet confirmed as saved outside the app.</strong><br>
-        Save the full ZIP backup to Files or iCloud Drive before starting another trip.
-      `;
-      $("backupCard")?.classList.add("backup-card-required");
-      return;
+      dataStatus = `<strong>Data backup required:</strong> ${escapeHTML(pendingParts.join(" and "))} not yet saved outside the app.`;
+    } else if (state.backup.lastConfirmedISO) {
+      const count = Number(state.backup.lastConfirmedTripCount || 0);
+      dataStatus = `<strong>Data backup current:</strong> ${escapeHTML(formatBackupDate(state.backup.lastConfirmedISO))}<br>
+        ${count} completed trip${count === 1 ? "" : "s"} included • ${escapeHTML(state.backup.lastFilename || "data backup")}`;
+    } else {
+      dataStatus = "<strong>Data backup ready:</strong> No completed trip is waiting for backup.";
     }
 
-    pill.textContent = state.backup.lastConfirmedISO ? "CURRENT" : "READY";
-    pill.className = "pill ready";
-    const count = Number(state.backup.lastConfirmedTripCount || 0);
-    text.innerHTML = state.backup.lastConfirmedISO
-      ? `<strong>Last confirmed backup:</strong> ${escapeHTML(formatBackupDate(state.backup.lastConfirmedISO))}<br>
-         ${count} completed trip${count === 1 ? "" : "s"} included • ${escapeHTML(state.backup.lastFilename || "backup file")}`
-      : `No completed trip is waiting for backup. After the first trip, the app will open the Save to Files process automatically.`;
-    $("backupCard")?.classList.remove("backup-card-required");
+    const photoStatus = !photoCount
+      ? "<strong>Photo backup:</strong> No inspection photos are stored."
+      : photosRequired
+        ? `<strong>Photo backup due:</strong> ${photoCount} inspection photo${photoCount === 1 ? "" : "s"} need a separate photo ZIP.`
+        : `<strong>Photo backup current:</strong> ${photoCount} photo${photoCount === 1 ? "" : "s"} • ${escapeHTML(state.backup.lastPhotoFilename || "photo backup")}`;
+
+    pill.textContent = dataRequired ? "DATA REQUIRED" : photosRequired ? "PHOTOS DUE" : (state.backup.lastConfirmedISO ? "CURRENT" : "READY");
+    pill.className = dataRequired ? "pill backup-required" : photosRequired ? "pill pending" : "pill ready";
+    text.innerHTML = `<div class="backup-status-line">${dataStatus}</div><div class="backup-status-line">${photoStatus}</div>`;
+    $("backupCard")?.classList.toggle("backup-card-required", dataRequired);
   }
 
   function requireBackupBeforeNewTrip() {
@@ -276,7 +314,7 @@
     renderBackupStatus();
     $("backupCard")?.scrollIntoView({ behavior: "smooth", block: "start" });
     window.alert(
-      "Mileage Logger has changes that still need a confirmed backup. Tap Save Full Backup to Files, save the ZIP to iCloud Drive or Files, and confirm the save before starting another trip."
+      "Mileage Logger has data changes that still need a confirmed backup. Tap Save Full Data Backup, save the ZIP to iCloud Drive or Files, and confirm the save before starting another trip."
     );
     return false;
   }
@@ -1071,11 +1109,11 @@
         status.textContent = "No photos are attached to this trip.";
         return;
       }
-      status.textContent = `${photos.length} photo${photos.length === 1 ? "" : "s"} saved with this trip and included in the full ZIP backup.`;
+      status.textContent = `${photos.length} photo${photos.length === 1 ? "" : "s"} saved with this trip. Filenames and descriptions are included in the data backup; inspection images use the separate photo backup.`;
       const cards = await Promise.all(photos.map(async (metadata) => {
         const stored = await window.MileageMediaStore?.getPhoto(metadata.id);
         if (!stored?.blob) {
-          return `<article><div class="trip-photo-caption"><strong>${escapeHTML(metadata.caption || metadata.name || "Trip photo")}</strong><small>Photo file is unavailable on this device. Restore the latest full ZIP backup.</small></div></article>`;
+          return `<article><div class="trip-photo-caption"><strong>${escapeHTML(metadata.caption || metadata.name || "Trip photo")}</strong><small>Photo file is unavailable on this device. Restore the matching inspection-photo backup.</small></div></article>`;
         }
         const url = URL.createObjectURL(stored.blob);
         tripLogPhotoObjectUrls.push(url);
@@ -1249,7 +1287,7 @@
     saveState();
     closeTripEditor();
     renderAll();
-    showToast("Trip updated. Save a new full backup before starting another trip.");
+    showToast("Trip updated. Save a new full data backup before starting another trip.");
   }
 
   function csvEscape(value) {
@@ -1376,66 +1414,103 @@
     return cleaned || fallback;
   }
 
-  function buildBackupPackage(photoManifest = []) {
+  function buildBackupPackage() {
     ensureBackupState();
     return {
-      backupFormat: "MileageLoggerFullBackup",
-      backupVersion: 3,
+      backupFormat: "MileageLoggerDataBackup",
+      backupVersion: 4,
       createdISO: new Date().toISOString(),
       tripCount: state.trips.length,
-      photoCount: photoManifest.length,
-      photoManifest,
-      note: "This ZIP includes mileage data, inspection records, and inspection photos. It excludes the privately imported STA master. Keep the original STA master PDF separately in Files.",
+      photoCount: inspectionPhotoMetadata().length,
+      photoManifest: inspectionPhotoMetadata(),
+      note: "This data ZIP includes mileage data, inspection records, GPS data, settings, and photo filenames and descriptions. Actual image files are stored in a separate Mileage Logger inspection-photo backup. The privately imported STA master is also excluded.",
       appState: state
     };
   }
 
-  async function createBackupFile() {
-    if (!window.fflate) throw new Error("The ZIP backup component is unavailable.");
-    if (!window.MileageMediaStore) throw new Error("Private photo storage is unavailable.");
-
-    const photos = await window.MileageMediaStore.getAllPhotos();
-    const photoManifest = photos.map((photo, index) => {
-      const extension = photoFileExtension(photo.type, photo.name);
-      const sequence = String(index + 1).padStart(3, "0");
-      const friendlyName = safePhotoName(photo.caption || photo.name, `inspection_photo_${sequence}`);
-      return {
-        id: photo.id,
-        inspectionId: photo.inspectionId,
-        name: photo.name,
-        type: photo.type,
-        size: photo.size,
-        width: photo.width,
-        height: photo.height,
-        createdISO: photo.createdISO,
-        caption: photo.caption || "",
-        path: `photos/${sequence}_${friendlyName}.${extension}`
-      };
-    });
-    const entries = {
-      "app-data.json": window.fflate.strToU8(JSON.stringify(buildBackupPackage(photoManifest), null, 2))
-    };
-
-    for (let index = 0; index < photos.length; index += 1) {
-      const photo = photos[index];
-      entries[photoManifest[index].path] = new Uint8Array(await photo.blob.arrayBuffer());
-    }
-
+  function makePreparedZip(filename, entries, summary, kind) {
     const bytes = window.fflate.zipSync(entries, { level: 6 });
-    const filename = `Mileage_Logger_Full_Backup_${backupTimestamp()}_${state.trips.length}_trips.zip`;
     const blob = new Blob([bytes], { type: "application/zip" });
     return {
+      kind,
       filename,
       blob,
       file: new File([blob], filename, { type: "application/zip" }),
-      summary: {
+      summary: { ...summary, bytes: blob.size }
+    };
+  }
+
+  async function createDataBackupFile() {
+    if (!window.fflate) throw new Error("The ZIP backup component is unavailable.");
+    const entries = {
+      "app-data.json": window.fflate.strToU8(JSON.stringify(buildBackupPackage(), null, 2))
+    };
+    return makePreparedZip(
+      `Mileage_Logger_Data_Backup_${backupTimestamp()}_${state.trips.length}_trips.zip`,
+      entries,
+      {
         completedTrips: state.trips.length,
         activeTrips: state.activeTrip ? 1 : 0,
         inspections: Array.isArray(state.settings?.inspections) ? state.settings.inspections.length : 0,
-        photos: photos.length,
-        bytes: blob.size
-      }
+        photoReferences: inspectionPhotoMetadata().length
+      },
+      "data"
+    );
+  }
+
+  async function createPhotoBackupFile() {
+    if (!window.fflate) throw new Error("The ZIP backup component is unavailable.");
+    if (!window.MileageMediaStore) throw new Error("Private photo storage is unavailable.");
+
+    const metadata = inspectionPhotoMetadata();
+    if (!metadata.length) throw new Error("There are no inspection photos to back up.");
+    const stored = await window.MileageMediaStore.getAllPhotos();
+    const storedById = new Map(stored.map((photo) => [photo.id, photo]));
+    const available = metadata.filter((photo) => storedById.get(photo.id)?.blob);
+    const missing = metadata.filter((photo) => !storedById.get(photo.id)?.blob);
+    if (!available.length) throw new Error("The inspection records contain photo references, but the image files are not stored on this device.");
+
+    const manifest = available.map((metadataPhoto, index) => {
+      const storedPhoto = storedById.get(metadataPhoto.id);
+      const extension = photoFileExtension(storedPhoto.type, storedPhoto.name);
+      const sequence = String(index + 1).padStart(3, "0");
+      const friendlyName = safePhotoName(metadataPhoto.caption || storedPhoto.name, `inspection_photo_${sequence}`);
+      return {
+        ...metadataPhoto,
+        name: storedPhoto.name || metadataPhoto.name,
+        type: storedPhoto.type || metadataPhoto.type,
+        size: storedPhoto.size || metadataPhoto.size,
+        width: storedPhoto.width || metadataPhoto.width,
+        height: storedPhoto.height || metadataPhoto.height,
+        createdISO: storedPhoto.createdISO || metadataPhoto.createdISO,
+        path: `photos/${sequence}_${friendlyName}.${extension}`
+      };
+    });
+    const packageInfo = {
+      backupFormat: "MileageLoggerPhotoBackup",
+      backupVersion: 1,
+      createdISO: new Date().toISOString(),
+      photoCount: manifest.length,
+      missingPhotoCount: missing.length,
+      photoManifest: manifest
     };
+    const entries = {
+      "photo-backup.json": window.fflate.strToU8(JSON.stringify(packageInfo, null, 2))
+    };
+    for (const photo of manifest) {
+      const storedPhoto = storedById.get(photo.id);
+      entries[photo.path] = new Uint8Array(await storedPhoto.blob.arrayBuffer());
+    }
+    return makePreparedZip(
+      `Mileage_Logger_Inspection_Photos_${backupTimestamp()}_${manifest.length}_photos.zip`,
+      entries,
+      {
+        photos: manifest.length,
+        inspections: new Set(manifest.map((photo) => photo.inspectionId).filter(Boolean)).size,
+        missingPhotos: missing.length
+      },
+      "photos"
+    );
   }
 
   function formatFileSize(bytes) {
@@ -1456,6 +1531,17 @@
     renderAll();
   }
 
+  function markPhotoBackupConfirmed(filename) {
+    ensureBackupState();
+    const photoIds = inspectionPhotoMetadata().map((photo) => photo.id).sort();
+    state.backup.lastPhotoConfirmedISO = new Date().toISOString();
+    state.backup.lastPhotoFilename = filename;
+    state.backup.lastPhotoCount = photoIds.length;
+    state.backup.lastPhotoIds = photoIds;
+    saveState();
+    renderAll();
+  }
+
   function closePreparedBackup(result) {
     if (!preparedBackupSession) return;
     const session = preparedBackupSession;
@@ -1464,7 +1550,9 @@
     $("sharePreparedBackupBtn").disabled = false;
     $("downloadPreparedBackupBtn").disabled = false;
     $("backupNowBtn").disabled = false;
-    $("backupNowBtn").textContent = "Save Full Backup to Files";
+    $("backupPhotosBtn").disabled = false;
+    $("backupNowBtn").textContent = "Save Full Data Backup";
+    $("backupPhotosBtn").textContent = "Save Inspection Photos";
     session.resolve(Boolean(result));
   }
 
@@ -1476,8 +1564,13 @@
     );
 
     if (confirmed) {
-      markBackupConfirmed(backup.filename);
-      showToast(automatic ? "Trip saved and backup confirmed." : "Full backup confirmed.");
+      if (backup.kind === "photos") {
+        markPhotoBackupConfirmed(backup.filename);
+        showToast("Inspection photo backup confirmed.");
+      } else {
+        markBackupConfirmed(backup.filename);
+        showToast(automatic ? "Trip saved and data backup confirmed." : "Full data backup confirmed.");
+      }
       closePreparedBackup(true);
       return;
     }
@@ -1488,15 +1581,24 @@
 
   function showPreparedBackup(backup, automatic) {
     const summary = backup.summary;
-    $("backupReadySummary").innerHTML = `
-      <strong>${escapeHTML(backup.filename)}</strong>
-      <span>${summary.completedTrips} completed trip${summary.completedTrips === 1 ? "" : "s"}</span>
-      <span>${summary.activeTrips} active trip${summary.activeTrips === 1 ? "" : "s"}</span>
-      <span>${summary.inspections} inspection record${summary.inspections === 1 ? "" : "s"}</span>
-      <span>${summary.photos} stored photo${summary.photos === 1 ? "" : "s"}</span>
-      <span>Settings and saved lists</span>
-      <span>File size: ${formatFileSize(summary.bytes)}</span>
-    `;
+    $("backupReadySummary").innerHTML = backup.kind === "photos"
+      ? `
+        <strong>${escapeHTML(backup.filename)}</strong>
+        <span>${summary.photos} inspection photo${summary.photos === 1 ? "" : "s"}</span>
+        <span>${summary.inspections} inspection record${summary.inspections === 1 ? "" : "s"}</span>
+        ${summary.missingPhotos ? `<span class="warn">${summary.missingPhotos} referenced photo${summary.missingPhotos === 1 ? " is" : "s are"} missing from this device</span>` : ""}
+        <span>File size: ${formatFileSize(summary.bytes)}</span>
+      `
+      : `
+        <strong>${escapeHTML(backup.filename)}</strong>
+        <span>${summary.completedTrips} completed trip${summary.completedTrips === 1 ? "" : "s"}</span>
+        <span>${summary.activeTrips} active trip${summary.activeTrips === 1 ? "" : "s"}</span>
+        <span>${summary.inspections} inspection record${summary.inspections === 1 ? "" : "s"}</span>
+        <span>${summary.photoReferences} photo filename and description reference${summary.photoReferences === 1 ? "" : "s"}</span>
+        <span>Actual image files are not included</span>
+        <span>Settings and saved lists</span>
+        <span>File size: ${formatFileSize(summary.bytes)}</span>
+      `;
     $("backupReadyStatus").textContent = "Tap Open Save to Files, then choose Save to Files in the iPhone share sheet.";
     $("backupReadyStatus").className = "gps-status good";
     $("backupReadyPanel").classList.remove("hidden");
@@ -1507,30 +1609,42 @@
     });
   }
 
-  async function saveFullBackupToFiles(options = {}) {
+  async function prepareBackupToFiles(kind, options = {}) {
     if (preparedBackupSession) {
       $("backupReadyPanel").scrollIntoView({ behavior: "smooth", block: "center" });
       return preparedBackupSession.promise;
     }
 
     const automatic = Boolean(options.automatic);
+    const trigger = kind === "photos" ? $("backupPhotosBtn") : $("backupNowBtn");
     $("backupNowBtn").disabled = true;
-    $("backupNowBtn").textContent = "Preparing Backup…";
+    $("backupPhotosBtn").disabled = true;
+    trigger.textContent = kind === "photos" ? "Preparing Photos…" : "Preparing Data…";
 
     let backup;
     try {
-      backup = await createBackupFile();
+      backup = kind === "photos" ? await createPhotoBackupFile() : await createDataBackupFile();
     } catch (error) {
       console.error("Backup creation failed:", error);
       $("backupNowBtn").disabled = false;
-      $("backupNowBtn").textContent = "Save Full Backup to Files";
-      window.alert(`The full ZIP backup could not be created.\n\n${error.message}`);
+      $("backupPhotosBtn").disabled = false;
+      $("backupNowBtn").textContent = "Save Full Data Backup";
+      $("backupPhotosBtn").textContent = "Save Inspection Photos";
+      window.alert(`The ${kind === "photos" ? "inspection photo" : "full data"} ZIP backup could not be created.\n\n${error.message}`);
       return false;
     }
 
     const resultPromise = showPreparedBackup(backup, automatic);
     preparedBackupSession.promise = resultPromise;
     return resultPromise;
+  }
+
+  function saveFullBackupToFiles(options = {}) {
+    return prepareBackupToFiles("data", options);
+  }
+
+  function savePhotoBackupToFiles() {
+    return prepareBackupToFiles("photos", { automatic: false });
   }
 
   function backupData() {
@@ -1547,9 +1661,14 @@
       if (isZip) {
         if (!window.fflate) throw new Error("The ZIP restore component is unavailable.");
         const entries = window.fflate.unzipSync(bytes);
+        if (entries["photo-backup.json"] && !entries["app-data.json"]) {
+          await restorePhotoBackupEntries(entries, file.name);
+          return;
+        }
         if (!entries["app-data.json"]) throw new Error("The ZIP does not contain app-data.json.");
         parsed = JSON.parse(window.fflate.strFromU8(entries["app-data.json"]));
-        restoredPhotos = (parsed.photoManifest || []).map((photo) => {
+        const embeddedPhotos = (parsed.photoManifest || []).filter((photo) => photo.path);
+        if (embeddedPhotos.length) restoredPhotos = embeddedPhotos.map((photo) => {
           const photoBytes = entries[photo.path];
           if (!photoBytes) throw new Error(`The ZIP is missing photo ${photo.name || photo.id}.`);
           return {
@@ -1561,7 +1680,7 @@
         parsed = JSON.parse(new TextDecoder().decode(bytes));
       }
 
-      const imported = parsed?.backupFormat === "MileageLoggerFullBackup"
+      const imported = parsed?.backupFormat === "MileageLoggerFullBackup" || parsed?.backupFormat === "MileageLoggerDataBackup"
         ? parsed.appState
         : parsed;
 
@@ -1570,7 +1689,7 @@
       }
 
       const photoMessage = restoredPhotos === null
-        ? "\n\nThis older JSON backup does not contain photo files. Existing private photos on this device will be left untouched."
+        ? "\n\nThis data backup contains photo filenames and descriptions, but not the actual images. Existing images on this device will be left untouched; restore the separate inspection-photo ZIP afterward."
         : `\n\n${restoredPhotos.length} inspection photo${restoredPhotos.length === 1 ? "" : "s"} will also be restored.`;
       const confirmed = window.confirm(`Restoring will replace all current mileage app data.${photoMessage}\n\nContinue?`);
       if (!confirmed) return;
@@ -1587,6 +1706,17 @@
       state.backup.lastConfirmedISO = new Date().toISOString();
       state.backup.lastConfirmedTripCount = state.trips.length;
       state.backup.lastFilename = file.name || "Restored backup";
+      if (restoredPhotos === null) {
+        state.backup.lastPhotoConfirmedISO = null;
+        state.backup.lastPhotoFilename = "";
+        state.backup.lastPhotoCount = 0;
+        state.backup.lastPhotoIds = [];
+      } else {
+        state.backup.lastPhotoConfirmedISO = new Date().toISOString();
+        state.backup.lastPhotoFilename = file.name || "Restored combined backup";
+        state.backup.lastPhotoCount = restoredPhotos.length;
+        state.backup.lastPhotoIds = restoredPhotos.map((photo) => photo.id).filter(Boolean).sort();
+      }
       saveState();
       renderAll();
 
@@ -1595,6 +1725,47 @@
     } catch (error) {
       console.error("Backup restore failed:", error);
       window.alert(`The backup could not be restored.\n\n${error.message}`);
+    }
+  }
+
+  async function restorePhotoBackupEntries(entries, filename) {
+    if (!window.MileageMediaStore) throw new Error("Private photo storage is unavailable.");
+    const packageInfo = JSON.parse(window.fflate.strFromU8(entries["photo-backup.json"]));
+    if (packageInfo?.backupFormat !== "MileageLoggerPhotoBackup" || !Array.isArray(packageInfo.photoManifest)) {
+      throw new Error("This is not a Mileage Logger inspection-photo backup.");
+    }
+    const restoredPhotos = packageInfo.photoManifest.map((photo) => {
+      const photoBytes = entries[photo.path];
+      if (!photoBytes) throw new Error(`The photo ZIP is missing ${photo.name || photo.id}.`);
+      return {
+        ...photo,
+        blob: new Blob([photoBytes], { type: photo.type || "image/jpeg" })
+      };
+    });
+    const confirmed = window.confirm(
+      `Restore ${restoredPhotos.length} inspection photo${restoredPhotos.length === 1 ? "" : "s"}?\n\nPhotos with matching IDs will be updated. Other photos already on this device will remain.`
+    );
+    if (!confirmed) return;
+
+    const existing = await window.MileageMediaStore.getAllPhotos();
+    const merged = new Map(existing.map((photo) => [photo.id, photo]));
+    restoredPhotos.forEach((photo) => merged.set(photo.id, photo));
+    await window.MileageMediaStore.replaceAllPhotos([...merged.values()]);
+    markPhotoBackupConfirmed(filename || "Restored photo backup");
+    renderAll();
+    showToast(`${restoredPhotos.length} inspection photo${restoredPhotos.length === 1 ? "" : "s"} restored.`);
+  }
+
+  async function importPhotoBackupFile(file) {
+    try {
+      if (!window.fflate) throw new Error("The ZIP restore component is unavailable.");
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const entries = window.fflate.unzipSync(bytes);
+      if (!entries["photo-backup.json"]) throw new Error("The ZIP does not contain photo-backup.json.");
+      await restorePhotoBackupEntries(entries, file.name);
+    } catch (error) {
+      console.error("Photo backup restore failed:", error);
+      window.alert(`The inspection-photo backup could not be restored.\n\n${error.message}`);
     }
   }
 
@@ -2403,7 +2574,7 @@
     state.backup.lastRequiredISO = new Date().toISOString();
     saveState();
     renderAll();
-    showToast("Trip deleted. Save a new full backup.");
+    showToast("Trip deleted. Save a new full data backup.");
   });
 
   $("tripTable").addEventListener("click", (event) => {
@@ -2414,8 +2585,10 @@
   });
 
   $("backupNowBtn").addEventListener("click", backupData);
+  $("backupPhotosBtn").addEventListener("click", savePhotoBackupToFiles);
   $("backupCsvBtn").addEventListener("click", exportCSV);
   $("restoreBackupBtn").addEventListener("click", () => $("importFile").click());
+  $("restorePhotoBackupBtn").addEventListener("click", () => $("importPhotoFile").click());
   $("sharePreparedBackupBtn").addEventListener("click", async () => {
     if (!preparedBackupSession) return;
     const { backup } = preparedBackupSession;
@@ -2433,7 +2606,7 @@
     $("sharePreparedBackupBtn").disabled = true;
     try {
       const shareOperation = navigator.share({
-        title: "Mileage Logger Full Backup",
+        title: backup.kind === "photos" ? "Mileage Logger Inspection Photos" : "Mileage Logger Full Data Backup",
         text: "Choose Save to Files, select an iCloud Drive folder, then tap Save.",
         files: [backup.file]
       });
@@ -2459,7 +2632,8 @@
     confirmPreparedBackupSaved();
   });
   $("cancelPreparedBackupBtn").addEventListener("click", () => {
-    showToast("Backup remains required until it is saved outside the app.");
+    const kind = preparedBackupSession?.backup?.kind;
+    showToast(kind === "photos" ? "Photo backup remains due." : "Data backup remains required until it is saved outside the app.");
     closePreparedBackup(false);
   });
   $("backupBtn").addEventListener("click", backupData);
@@ -2469,6 +2643,12 @@
     const file = $("importFile").files[0];
     if (file) importBackupFile(file);
     $("importFile").value = "";
+  });
+
+  $("importPhotoFile").addEventListener("change", () => {
+    const file = $("importPhotoFile").files[0];
+    if (file) importPhotoBackupFile(file);
+    $("importPhotoFile").value = "";
   });
 
   $("saveSettingsBtn").addEventListener("click", () => {
