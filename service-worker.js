@@ -1,11 +1,11 @@
-const CACHE_NAME = "mileage-logger-split-photo-backup-v38";
+const CACHE_NAME = "mileage-logger-photo-metadata-only-v39";
 const APP_FILES = [
   "./",
   "./index.html",
-  "./styles.css?v=split-photo-backup-1",
-  "./app.js?v=split-photo-backup-1",
-  "./inspections.js?v=split-photo-backup-1",
-  "./media-store.js?v=split-photo-backup-1",
+  "./styles.css?v=photo-metadata-only-1",
+  "./app.js?v=photo-metadata-only-1",
+  "./inspections.js?v=photo-metadata-only-1",
+  "./media-store.js?v=photo-metadata-only-1",
   "./vendor/pdf-lib.min.js",
   "./vendor/fflate.min.js",
   "./manifest.webmanifest",
