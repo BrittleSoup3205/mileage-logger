@@ -740,6 +740,12 @@ hr {
   background: color-mix(in srgb, var(--card), var(--bg) 35%);
 }
 
+.backup-status-line + .backup-status-line {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
 .backup-actions {
   display: flex;
   flex-wrap: wrap;
@@ -777,6 +783,16 @@ hr {
 .pill.backup-required {
   color: #ffffff;
   background: var(--danger);
+}
+
+.pill.pending {
+  color: #6f4b00;
+  background: color-mix(in srgb, var(--warning), transparent 78%);
+}
+
+.backup-ready-summary .warn {
+  color: var(--danger);
+  font-weight: 700;
 }
 
 .required-backup-note {
