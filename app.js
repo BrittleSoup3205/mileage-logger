@@ -1386,7 +1386,7 @@
       tripCount: state.trips.length,
       photoCount: inspectionPhotoMetadata().length,
       photoManifest: inspectionPhotoMetadata(),
-      note: "This data ZIP includes mileage data, inspection records, GPS data, settings, and photo filenames and descriptions. Actual image files are not included; retain the originals in iPhone Photos. The privately imported STA master is also excluded.",
+      note: "This data ZIP includes app-data.json plus a mileage-log.csv spreadsheet. It contains mileage data, inspection records, GPS data, settings, and photo filenames and descriptions. Actual image files are not included; retain the originals in iPhone Photos. The privately imported STA master is also excluded.",
       appState: state
     };
   }
@@ -1405,7 +1405,8 @@
   async function createDataBackupFile() {
     if (!window.fflate) throw new Error("The ZIP backup component is unavailable.");
     const entries = {
-      "app-data.json": window.fflate.strToU8(JSON.stringify(buildBackupPackage(), null, 2))
+      "app-data.json": window.fflate.strToU8(JSON.stringify(buildBackupPackage(), null, 2)),
+      "mileage-log.csv": window.fflate.strToU8(makeCSV())
     };
     return makePreparedZip(
       `Mileage_Logger_Data_Backup_${backupTimestamp()}_${state.trips.length}_trips.zip`,
@@ -1476,6 +1477,7 @@
       <span>${summary.activeTrips} active trip${summary.activeTrips === 1 ? "" : "s"}</span>
       <span>${summary.inspections} inspection record${summary.inspections === 1 ? "" : "s"}</span>
       <span>${summary.photoReferences} photo filename and description reference${summary.photoReferences === 1 ? "" : "s"}</span>
+      <span>Mileage log spreadsheet included (mileage-log.csv)</span>
       <span>Actual image files are not included; retain originals in iPhone Photos</span>
       <span>Settings and saved lists</span>
       <span>File size: ${formatFileSize(summary.bytes)}</span>
@@ -2416,11 +2418,9 @@
 
     $("sharePreparedBackupBtn").disabled = true;
     try {
-      const shareOperation = navigator.share({
-        title: "Mileage Logger Full Data Backup",
-        text: "Choose Save to Files, select an iCloud Drive folder, then tap Save.",
-        files: [backup.file]
-      });
+      // Share only the ZIP. On iOS, a text payload can be saved as a separate
+      // unwanted .txt file beside the backup.
+      const shareOperation = navigator.share({ files: [backup.file] });
       await shareOperation;
       confirmPreparedBackupSaved();
     } catch (error) {
