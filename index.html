@@ -11,7 +11,7 @@
   <title>Mileage Logger GPS</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=photo-metadata-only-1">
+  <link rel="stylesheet" href="./styles.css?v=backup-csv-only-share-1">
 </head>
 <body>
   <header class="topbar">
@@ -73,7 +73,7 @@
       </section>
 
       <p class="privacy-note compact-note">
-        The full data backup contains mileage records, inspections, GPS data, settings, and photo filenames and descriptions, but not the image files.
+        The full data backup contains mileage records, inspections, GPS data, settings, a mileage-log CSV spreadsheet, and photo filenames and descriptions, but not the image files.
         Retain the original images in your iPhone Photos library; app backups do not contain actual photos.
         Choose <strong>Save to Files</strong>, select an iCloud Drive folder, tap <strong>Save</strong>, then confirm the save in the app.
         A new trip is blocked only until the prior data backup is confirmed.
@@ -393,7 +393,7 @@
 
       <div class="required-backup-note">
         <strong>Backup rule:</strong> A small full data ZIP is required after every completed trip or record change.
-        The data ZIP keeps photo filenames, descriptions, and record links, but not the actual images. Retain originals in iPhone Photos.
+        The data ZIP includes a mileage-log CSV spreadsheet and keeps photo filenames, descriptions, and record links, but not the actual images. Retain originals in iPhone Photos.
         Older combined ZIP and JSON backups can still be restored.
         This rule cannot be turned off in this build because the mileage record is the primary purpose of the app.
       </div>
@@ -527,9 +527,9 @@
 
   <script src="./vendor/pdf-lib.min.js"></script>
   <script src="./vendor/fflate.min.js"></script>
-  <script src="./media-store.js?v=photo-metadata-only-1"></script>
-  <script src="./app.js?v=photo-metadata-only-1"></script>
-  <script src="./inspections.js?v=photo-metadata-only-1"></script>
+  <script src="./media-store.js?v=backup-csv-only-share-1"></script>
+  <script src="./app.js?v=backup-csv-only-share-1"></script>
+  <script src="./inspections.js?v=backup-csv-only-share-1"></script>
 </body>
 </html>
 
