@@ -1348,6 +1348,76 @@
     return rows.map((row) => row.map(csvEscape).join(",")).join("\r\n");
   }
 
+  function excelDate(value) {
+    const text = String(value ?? "").trim();
+    if (!text) return "";
+    const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+    const usMatch = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (usMatch) {
+      return `${usMatch[3]}-${usMatch[1].padStart(2, "0")}-${usMatch[2].padStart(2, "0")}`;
+    }
+    return text;
+  }
+
+  function activityNotes(...values) {
+    return values
+      .map((value) => String(value ?? "").trim())
+      .filter(Boolean)
+      .filter((value, index, all) => all.indexOf(value) === index)
+      .join(" | ");
+  }
+
+  function makeActiveJobsActivityCSV() {
+    const inspections = Array.isArray(state.settings?.inspections) ? state.settings.inspections : [];
+    const tripsById = new Map(state.trips.map((trip) => [trip.id, trip]));
+    const linkedTripIds = new Set(inspections.map((inspection) => inspection.tripId).filter(Boolean));
+    const rows = [[
+      "Visit ID",
+      "Date",
+      "Vendor / Facility",
+      "Location",
+      "Inspection Job #",
+      "Shop / Job #",
+      "Client / Project",
+      "Mileage",
+      "Notes"
+    ]];
+
+    inspections.forEach((inspection) => {
+      const trip = inspection.tripId ? tripsById.get(inspection.tripId) : null;
+      const tripData = trip || inspection.tripSnapshot || null;
+      rows.push([
+        `inspection:${inspection.id}`,
+        excelDate(inspection.date || tripData?.date),
+        inspection.vendor || "",
+        "",
+        inspection.projectNumber || "",
+        inspection.purchaseOrderJob || "",
+        inspection.customer || "",
+        tripData?.miles ?? "",
+        activityNotes(tripData?.notes, inspection.activity, inspection.summary, inspection.observations)
+      ]);
+    });
+
+    state.trips.forEach((trip) => {
+      if (linkedTripIds.has(trip.id)) return;
+      rows.push([
+        `trip:${trip.id}`,
+        excelDate(trip.date),
+        trip.vendor || "",
+        "",
+        trip.projectNumber || "",
+        "",
+        trip.customer || "",
+        trip.miles ?? "",
+        activityNotes(trip.purpose, trip.notes)
+      ]);
+    });
+
+    return `\uFEFF${rows.map((row) => row.map(csvEscape).join(",")).join("\r\n")}`;
+  }
+
   function downloadFile(filename, content, type) {
     const blob = new Blob([content], { type });
     const url = URL.createObjectURL(blob);
@@ -1369,6 +1439,20 @@
     const stamp = new Date().toISOString().slice(0, 10);
     downloadFile(`mileage-log-gps-${stamp}.csv`, makeCSV(), "text/csv;charset=utf-8");
     showToast("CSV export created.");
+  }
+
+  function exportActiveJobsActivityCSV() {
+    const inspections = Array.isArray(state.settings?.inspections) ? state.settings.inspections : [];
+    if (state.trips.length === 0 && inspections.length === 0) {
+      showToast("There are no visits to export for Active Jobs.");
+      return;
+    }
+    downloadFile(
+      "Mileage_Logger_Activity.csv",
+      makeActiveJobsActivityCSV(),
+      "text/csv;charset=utf-8"
+    );
+    showToast("Active Jobs activity export created. Save it in the Mileage Logger OneDrive folder.");
   }
 
   function backupTimestamp() {
@@ -2401,6 +2485,7 @@
 
   $("backupNowBtn").addEventListener("click", backupData);
   $("backupCsvBtn").addEventListener("click", exportCSV);
+  $("activeJobsCsvBtn").addEventListener("click", exportActiveJobsActivityCSV);
   $("restoreBackupBtn").addEventListener("click", () => $("importFile").click());
   $("sharePreparedBackupBtn").addEventListener("click", async () => {
     if (!preparedBackupSession) return;
