@@ -1,9 +1,9 @@
-const CACHE_NAME = "mileage-logger-backup-csv-only-share-v40";
+const CACHE_NAME = "mileage-logger-active-jobs-export-v41";
 const APP_FILES = [
   "./",
-  "./index.html",
-  "./styles.css?v=backup-csv-only-share-1",
-  "./app.js?v=backup-csv-only-share-1",
+  "./index.html?v=active-jobs-export-1",
+  "./styles.css?v=active-jobs-export-1",
+  "./app.js?v=active-jobs-export-1",
   "./inspections.js?v=backup-csv-only-share-1",
   "./media-store.js?v=backup-csv-only-share-1",
   "./vendor/pdf-lib.min.js",
