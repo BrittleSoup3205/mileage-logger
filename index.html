@@ -57,8 +57,13 @@
       <div class="backup-actions">
         <button id="backupNowBtn" class="button button-backup" type="button">Save Full Data Backup</button>
         <button id="backupCsvBtn" class="button button-secondary" type="button">Export CSV Copy</button>
+        <button id="activeJobsCsvBtn" class="button button-secondary" type="button">Export Active Jobs Activity</button>
         <button id="restoreBackupBtn" class="button button-secondary" type="button">Restore Data Backup</button>
       </div>
+
+      <p class="privacy-note compact-note">
+        Save <strong>Mileage_Logger_Activity.csv</strong> in OneDrive &gt; 1Mileage Logger and replace the previous copy. This activity feed does not determine inspection or project status.
+      </p>
 
       <section id="backupReadyPanel" class="backup-ready-panel hidden" aria-labelledby="backupReadyTitle">
         <p class="eyebrow">Backup prepared</p>
@@ -528,7 +533,7 @@
   <script src="./vendor/pdf-lib.min.js"></script>
   <script src="./vendor/fflate.min.js"></script>
   <script src="./media-store.js?v=backup-csv-only-share-1"></script>
-  <script src="./app.js?v=backup-csv-only-share-1"></script>
+  <script src="./app.js?v=active-jobs-export-1"></script>
   <script src="./inspections.js?v=backup-csv-only-share-1"></script>
 </body>
 </html>
