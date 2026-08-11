@@ -32,11 +32,15 @@ This branch starts the next Mileage Logger inspection-workflow build. It is inte
 
 ## Production integration
 
-The Active Jobs workspace is loaded inside the existing **Inspections** screen in `index.html`. Active Job inspections use the existing `settings.inspections` database, backup/restore state, photo store, follow-up tracking, inspection exports, and offline application shell.
+The Visit / Vendor Workspace is loaded inside **Visits & Inspections**. Active Job inspections use the existing `settings.inspections` database, backup/restore state, photo store, follow-up tracking, inspection exports, and offline application shell.
 
+- One selected vendor visit presents its mileage details, quick notes, visit photos, linked inspections, and available Active Jobs together.
+- Linked inspection buttons provide direct AJ switching without leaving the visit.
 - Switching AJs autosaves and later resumes the AJ's current draft.
 - The current-AJ banner stays above the inspection form as a visual safeguard.
-- Photos and quick notes are stored on the current inspection record, which carries its `activeJobId`.
+- Trip-level photos remain owned by the trip and are shown read-only inside linked inspections; inspection-specific photos remain owned by their inspection record.
+- Completed trips can add, remove, and caption trip-level photos from **Edit Trip**.
+- Quick notes are stored on their trip or inspection record and gathered in the Visit workspace.
 - Reporting vendor is fixed from the selected AJ while inspection location/subvendor remains separately editable.
 - Existing mileage trips remain single records. Multiple AJ inspections can reference the same `tripId`, and the Active Jobs activity CSV emits that trip's mileage once with all linked AJ identifiers.
 - Draft, completion, Active Job status, and open follow-up remain independent states.

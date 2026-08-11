@@ -20,6 +20,8 @@
   let currentPhotos = [];
   let originalPhotoIds = new Set();
   let photoObjectUrls = [];
+  let linkedTripPhotoObjectUrls = [];
+  let workspacePhotoObjectUrls = [];
   let inspectionListObjectUrls = [];
   let activeView = "inspections";
   const selectedInspectionIds = new Set();
@@ -535,7 +537,33 @@
       .followup-editor-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap: 8px; align-items: end; }
       .inspection-linked-trip { padding: 10px; border: 1px dashed var(--line); border-radius: 10px; background: var(--card); }
       .active-jobs-workspace { margin: 16px 0; padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: color-mix(in srgb, var(--accent), transparent 97%); }
-      .active-jobs-workspace-grid { display: grid; grid-template-columns: minmax(190px, .75fr) minmax(0, 2fr); gap: 12px; align-items: start; }
+      .visit-current-context { display: grid; gap: 3px; margin: 10px 0 12px; padding: 13px; border: 3px solid var(--accent); border-radius: 13px; background: var(--card); box-shadow: 0 4px 14px rgba(0,0,0,.09); }
+      .visit-current-context strong { font-size: 1.05rem; }
+      .visit-current-context small { color: var(--muted); }
+      .visit-workspace-selectors { display: grid; grid-template-columns: minmax(190px, .8fr) minmax(260px, 1.2fr); gap: 11px; }
+      .visit-summary { margin: 11px 0; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+      .visit-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+      .visit-summary-grid > div { display: grid; align-content: start; gap: 3px; padding: 9px; border-radius: 9px; background: color-mix(in srgb, var(--card), var(--bg) 38%); }
+      .visit-summary-grid span, .visit-summary-grid small { color: var(--muted); font-size: .78rem; }
+      .visit-linked-inspections, .visit-notes-photos { margin: 11px 0; }
+      .visit-panel-heading, .visit-workspace-job-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin: 7px 0; }
+      .visit-panel-heading span, .visit-workspace-job-heading span { color: var(--muted); font-size: .82rem; }
+      .visit-inspection-switcher { display: flex; gap: 8px; overflow-x: auto; padding: 2px 1px 8px; scroll-snap-type: x proximity; }
+      .visit-inspection-chip { display: grid; flex: 0 0 min(250px, 78vw); gap: 3px; min-height: 88px; padding: 10px; color: var(--text); text-align: left; border: 1px solid var(--line); border-radius: 11px; background: var(--card); scroll-snap-align: start; }
+      .visit-inspection-chip.current { border: 3px solid var(--accent); }
+      .visit-inspection-chip span, .visit-inspection-chip small { color: var(--muted); }
+      .visit-notes-photos { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 12px; }
+      .visit-notes-photos > section { min-width: 0; padding: 11px; border: 1px solid var(--line); border-radius: 11px; background: var(--card); }
+      .visit-quick-notes { display: grid; gap: 7px; }
+      .visit-quick-notes article { padding: 8px; border-left: 3px solid var(--info); border-radius: 8px; background: color-mix(in srgb, var(--info), transparent 95%); }
+      .visit-quick-notes small { color: var(--muted); font-weight: 700; }
+      .visit-quick-notes p { margin: 3px 0 0; white-space: pre-wrap; }
+      .visit-workspace-photos { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 5px; }
+      .visit-photo-card { display: grid; flex: 0 0 130px; gap: 4px; min-width: 0; }
+      .visit-photo-card button { width: 130px; height: 92px; padding: 0; overflow: hidden; border: 0; border-radius: 9px; background: color-mix(in srgb, var(--card), var(--bg) 42%); }
+      .visit-photo-card img { display: block; width: 100%; height: 100%; object-fit: cover; }
+      .visit-photo-card small { color: var(--muted); }
+      .visit-photo-card strong { overflow-wrap: anywhere; font-size: .83rem; }
       .active-job-card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
       .active-job-card { padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
       .active-job-card.current { border: 3px solid var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent), transparent 80%); }
@@ -559,7 +587,8 @@
       .bottom-nav.inspection-nav-enabled button { font-size: .76rem; }
       @media (max-width: 760px) {
         .inspection-dashboard { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .active-jobs-workspace-grid, .active-job-card-grid, .active-job-facts, .inspection-check-grid { grid-template-columns: 1fr; }
+        .visit-workspace-selectors, .visit-summary-grid, .visit-notes-photos, .active-job-card-grid, .active-job-facts, .inspection-check-grid { grid-template-columns: 1fr; }
+        .visit-panel-heading, .visit-workspace-job-heading { align-items: flex-start; flex-direction: column; }
         .inspection-form-grid, .inspection-form-grid.two { grid-template-columns: 1fr; }
         .followup-editor-grid { grid-template-columns: 1fr; }
         .inspection-photo-card { grid-template-columns: 1fr; }
@@ -579,7 +608,7 @@
       button.id = "inspectionBtn";
       button.className = "button inspection-button button-large";
       button.type = "button";
-      button.textContent = "Inspections";
+      button.textContent = "Visits & Inspections";
       quickActions.appendChild(button);
     }
 
@@ -588,7 +617,7 @@
       const button = document.createElement("button");
       button.id = "inspectionNavBtn";
       button.type = "button";
-      button.textContent = "Inspect";
+      button.textContent = "Visits";
       bottomNav.appendChild(button);
       bottomNav.classList.add("inspection-nav-enabled");
     }
@@ -610,9 +639,9 @@
       section.innerHTML = `
         <div class="section-heading">
           <div>
-            <p class="eyebrow">Inspection database</p>
-            <h2 id="inspectionTitle">Inspection Records</h2>
-            <p class="muted">Trip-linked and standalone work records stored inside the full app backup.</p>
+            <p class="eyebrow">Visit-centered work</p>
+            <h2 id="inspectionTitle">Visits &amp; Inspections</h2>
+            <p class="muted">Mileage stays on one trip while every linked Active Job keeps its own inspection record.</p>
           </div>
           <button id="closeInspectionSection" class="button button-quiet button-small" type="button">Close</button>
         </div>
@@ -620,22 +649,31 @@
         <div id="inspectionDashboard" class="inspection-dashboard"></div>
         <div id="inspectionBackupNotice" class="inspection-backup-notice"></div>
 
-        <section class="active-jobs-workspace" aria-labelledby="activeJobsWorkspaceTitle">
+        <section class="active-jobs-workspace visit-workspace" aria-labelledby="activeJobsWorkspaceTitle">
           <div class="section-heading compact">
             <div>
-              <p class="eyebrow">Vendor workspace</p>
-              <h3 id="activeJobsWorkspaceTitle">Active Jobs</h3>
-              <p class="muted">Choose the vendor/location, then the exact AJ before entering notes or photos.</p>
+              <p class="eyebrow">Vendor visit workspace</p>
+              <h3 id="activeJobsWorkspaceTitle">One Visit, All Linked Work</h3>
+              <p class="muted">Choose a vendor and visit once, then switch between its linked jobs and inspections without leaving this workspace.</p>
             </div>
           </div>
           <div id="activeJobsConflict" class="active-job-conflict hidden"></div>
-          <div class="active-jobs-workspace-grid">
+          <div id="visitCurrentContext" class="visit-current-context"></div>
+          <div class="visit-workspace-selectors">
             <label>
               Vendor / known inspection location
               <select id="activeJobsVendor"></select>
             </label>
-            <div id="activeJobsCards" class="active-job-card-grid"></div>
+            <label>
+              Visit / mileage trip
+              <select id="activeJobsVisit"></select>
+            </label>
           </div>
+          <div id="visitSummary" class="visit-summary"></div>
+          <div id="visitLinkedInspections" class="visit-linked-inspections"></div>
+          <div id="visitNotesPhotos" class="visit-notes-photos"></div>
+          <div class="visit-workspace-job-heading"><strong>Active Jobs at this vendor</strong><span>Choose a job to open its linked inspection or add it to this visit.</span></div>
+          <div id="activeJobsCards" class="active-job-card-grid"></div>
         </section>
 
         <section class="inspection-template-panel" aria-labelledby="inspectionTemplateTitle">
@@ -660,7 +698,8 @@
         </section>
 
         <div class="inspection-toolbar">
-          <button id="newInspectionBtn" class="button inspection-button" type="button">New Inspection</button>
+          <button id="newInspectionBtn" class="button inspection-button" type="button">Add Inspection to Visit</button>
+          <button id="standaloneInspectionBtn" class="button button-secondary" type="button">Standalone Inspection</button>
           <button id="inspectionListViewBtn" class="button button-secondary active-view" type="button">Inspection History</button>
           <button id="followUpViewBtn" class="button button-secondary" type="button">Open Follow-ups</button>
           <button id="exportInspectionsBtn" class="button button-secondary" type="button">Export Inspection CSV</button>
@@ -729,19 +768,146 @@
     return locations;
   }
 
+  function sameLocation(left, right) {
+    return String(left || "").trim().toLowerCase() === String(right || "").trim().toLowerCase();
+  }
+
+  function workspaceTripsForVendor(state, vendor) {
+    if (!vendor) return [];
+    return [...state.trips]
+      .filter((trip) => {
+        if (sameLocation(trip.vendor, vendor)) return true;
+        return state.settings.inspections.some((inspection) => (
+          inspection.tripId === trip.id
+          && (sameLocation(inspection.inspectionLocation || inspection.vendor, vendor)
+            || sameLocation(inspection.reportingVendor, vendor))
+        ));
+      })
+      .sort((a, b) => String(b.endISO || b.date || "").localeCompare(String(a.endISO || a.date || "")));
+  }
+
+  async function renderWorkspacePhotos(trip, inspections) {
+    const container = $("visitWorkspacePhotos");
+    workspacePhotoObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+    workspacePhotoObjectUrls = [];
+    if (!container) return;
+    const entries = [
+      ...(trip?.photos || []).map((photo) => ({ photo, label: "Trip / visit" })),
+      ...inspections.flatMap((inspection) => (inspection.photos || [])
+        .filter((photo) => !photo.sourceTripId)
+        .map((photo) => ({ photo, label: inspection.activeJobId || "Standalone inspection" })))
+    ];
+    if (!entries.length) {
+      container.innerHTML = `<div class="inspection-empty compact">No visit or inspection photos attached.</div>`;
+      return;
+    }
+    container.innerHTML = entries.map(({ photo, label }) => `
+      <article class="visit-photo-card">
+        <button type="button" data-view-photo="${escapeHTML(photo.id)}" aria-label="Open ${escapeHTML(photo.caption || photo.name || "photo")}"><span>Loading…</span></button>
+        <small>${escapeHTML(label)}</small>
+        <strong>${escapeHTML(photo.caption || photo.name || "Photo")}</strong>
+      </article>
+    `).join("");
+    await Promise.all(entries.map(async ({ photo }) => {
+      try {
+        const stored = await window.MileageMediaStore?.getPhoto(photo.id);
+        if (!stored?.blob || !$("visitWorkspacePhotos")) return;
+        const button = container.querySelector(`[data-view-photo="${CSS.escape(photo.id)}"]`);
+        if (!button) return;
+        const url = URL.createObjectURL(stored.blob);
+        workspacePhotoObjectUrls.push(url);
+        button.dataset.photoUrl = url;
+        button.innerHTML = `<img src="${url}" alt="${escapeHTML(photo.caption || photo.name || "Visit photo")}">`;
+      } catch (error) {
+        console.warn("Could not load a Visit Workspace photo:", error);
+      }
+    }));
+  }
+
   function renderActiveJobsWorkspace(state = readState()) {
     const vendorSelect = $("activeJobsVendor");
+    const visitSelect = $("activeJobsVisit");
     const cards = $("activeJobsCards");
     const conflict = $("activeJobsConflict");
-    if (!vendorSelect || !cards || !conflict) return;
+    const context = $("visitCurrentContext");
+    const summary = $("visitSummary");
+    const linkedPanel = $("visitLinkedInspections");
+    const notesPhotos = $("visitNotesPhotos");
+    if (!vendorSelect || !visitSelect || !cards || !conflict || !context || !summary || !linkedPanel || !notesPhotos) return;
 
     const currentJob = activeJobById(state.settings.currentActiveJobId);
     const vendors = new Set();
     ACTIVE_JOBS.filter((job) => job.openClosed === "Open").forEach((job) => {
       activeJobLocations(state, job).forEach((location) => vendors.add(location));
     });
-    const selectedVendor = state.settings.activeJobsWorkspaceVendor || currentJob?.reportingVendor || "";
+    state.trips.forEach((trip) => {
+      if (trip.vendor) vendors.add(trip.vendor);
+    });
+    const savedTrip = getTripById(state, state.settings.activeJobsWorkspaceTripId);
+    const selectedVendor = state.settings.activeJobsWorkspaceVendor || savedTrip?.vendor || currentJob?.reportingVendor || "";
     vendorSelect.innerHTML = `<option value="">Choose vendor/location…</option>${[...vendors].sort().map((vendor) => `<option value="${escapeHTML(vendor)}"${vendor === selectedVendor ? " selected" : ""}>${escapeHTML(vendor)}</option>`).join("")}`;
+
+    const visits = workspaceTripsForVendor(state, selectedVendor);
+    const standaloneSelected = state.settings.activeJobsWorkspaceTripId === "__standalone__";
+    const selectedTripId = standaloneSelected
+      ? ""
+      : (visits.some((trip) => trip.id === state.settings.activeJobsWorkspaceTripId)
+        ? state.settings.activeJobsWorkspaceTripId
+        : (visits[0]?.id || ""));
+    const selectedTrip = getTripById(state, selectedTripId);
+    visitSelect.innerHTML = `<option value=""${standaloneSelected ? " selected" : ""}>Standalone / no mileage trip</option>${visits.map((trip) => `<option value="${escapeHTML(trip.id)}"${trip.id === selectedTripId ? " selected" : ""}>${escapeHTML(trip.date || "Saved visit")} — ${escapeHTML(trip.purpose || "Visit")} — ${escapeHTML(formatMiles(trip.miles))}</option>`).join("")}`;
+
+    const linkedInspections = state.settings.inspections
+      .filter((inspection) => selectedTrip
+        ? inspection.tripId === selectedTrip.id
+        : (!inspection.tripId && selectedVendor && (
+          sameLocation(inspection.inspectionLocation || inspection.vendor, selectedVendor)
+          || sameLocation(inspection.reportingVendor, selectedVendor)
+        )))
+      .sort((a, b) => String(b.modifiedISO || b.createdISO || "").localeCompare(String(a.modifiedISO || a.createdISO || "")));
+    const editingInspection = state.settings.inspections.find((inspection) => inspection.id === editingInspectionId) || null;
+    const contextJob = activeJobById(editingInspection?.activeJobId || currentJob?.aj);
+    context.innerHTML = `
+      <span class="eyebrow">Current context</span>
+      <strong>${selectedTrip ? `${escapeHTML(selectedTrip.vendor || "Vendor visit")} — ${escapeHTML(selectedTrip.date || "Saved visit")}` : (selectedVendor ? `${escapeHTML(selectedVendor)} — standalone work` : "Choose a vendor and visit")}</strong>
+      <small>${contextJob ? `${escapeHTML(contextJob.aj)} — ${escapeHTML(contextJob.projectName)}` : "No Active Job selected"}${selectedTrip ? ` • Mileage counted once: ${escapeHTML(formatMiles(selectedTrip.miles))}` : " • No trip mileage attached"}</small>`;
+
+    if (selectedTrip) {
+      const startMap = mapLink(selectedTrip.startLocation, "Trip Start");
+      const endMap = mapLink(selectedTrip.endLocation, "Trip End");
+      summary.innerHTML = `
+        <div class="visit-summary-grid">
+          <div><span>Date / time</span><strong>${escapeHTML(selectedTrip.date || "—")}<br>${escapeHTML(selectedTrip.startTime || "—")}–${escapeHTML(selectedTrip.endTime || "—")}</strong></div>
+          <div><span>Mileage</span><strong>${escapeHTML(formatMiles(selectedTrip.miles))}</strong><small>Counted once for this visit</small></div>
+          <div><span>Client / project</span><strong>${escapeHTML(selectedTrip.customer || "—")}<br>${escapeHTML(selectedTrip.projectNumber || "—")}</strong></div>
+          <div><span>Purpose</span><strong>${escapeHTML(selectedTrip.purpose || "—")}</strong></div>
+        </div>
+        <div class="form-actions wrap">
+          <button class="button button-secondary button-small" type="button" data-edit-workspace-trip="${escapeHTML(selectedTrip.id)}">Edit Trip &amp; Photos</button>
+          ${startMap ? `<a class="button button-secondary button-small" href="${startMap}" target="_blank" rel="noopener">Start Map</a>` : ""}
+          ${endMap ? `<a class="button button-secondary button-small" href="${endMap}" target="_blank" rel="noopener">End Map</a>` : ""}
+        </div>`;
+    } else {
+      summary.innerHTML = `<div class="inspection-empty compact">Standalone mode keeps an inspection available when no mileage trip exists. Choose a saved visit above to link mileage and GPS.</div>`;
+    }
+
+    linkedPanel.innerHTML = `
+      <div class="visit-panel-heading"><strong>Linked inspections</strong><span>${linkedInspections.length} record${linkedInspections.length === 1 ? "" : "s"}</span></div>
+      <div class="visit-inspection-switcher">${linkedInspections.length ? linkedInspections.map((inspection) => `
+        <button class="visit-inspection-chip${inspection.id === editingInspectionId ? " current" : ""}" type="button" data-open-workspace-inspection="${escapeHTML(inspection.id)}">
+          <span>${escapeHTML(inspection.activeJobId || "Standalone")}</span>
+          <strong>${escapeHTML(inspection.activity || inspection.inspectionType || "Inspection")}</strong>
+          <small>${escapeHTML(inspection.status || "Draft")} • ${escapeHTML(inspection.quickNote || "No quick note")}</small>
+        </button>`).join("") : `<div class="inspection-empty compact">No inspections are linked to this ${selectedTrip ? "visit" : "vendor context"} yet.</div>`}</div>`;
+
+    const quickNotes = [
+      selectedTrip?.notes ? { label: "Trip / visit note", text: selectedTrip.notes } : null,
+      ...linkedInspections.filter((inspection) => inspection.quickNote).map((inspection) => ({ label: inspection.activeJobId || "Standalone inspection", text: inspection.quickNote }))
+    ].filter(Boolean);
+    notesPhotos.innerHTML = `
+      <section><div class="visit-panel-heading"><strong>Quick notes</strong><span>${quickNotes.length}</span></div><div class="visit-quick-notes">${quickNotes.length ? quickNotes.map((note) => `<article><small>${escapeHTML(note.label)}</small><p>${escapeHTML(note.text)}</p></article>`).join("") : `<div class="inspection-empty compact">No quick notes entered.</div>`}</div></section>
+      <section><div class="visit-panel-heading"><strong>Photos</strong><span>Trip and inspection ownership shown separately</span></div><div id="visitWorkspacePhotos" class="visit-workspace-photos"></div></section>`;
+    renderWorkspacePhotos(selectedTrip, linkedInspections);
 
     const conflicts = typeof ACTIVE_JOB_DATA.reportingUnitConflicts === "function"
       ? ACTIVE_JOB_DATA.reportingUnitConflicts(ACTIVE_JOBS)
@@ -758,18 +924,20 @@
       .filter((job) => job.openClosed === "Open")
       .filter((job) => selectedVendor && activeJobLocations(state, job).has(selectedVendor));
     cards.innerHTML = jobs.length ? jobs.map((job) => {
-      const current = job.aj === currentJob?.aj;
-      const draftCount = state.settings.inspections.filter((inspection) => inspection.activeJobId === job.aj && inspection.status === "Draft").length;
+      const current = job.aj === contextJob?.aj;
+      const visitRecords = linkedInspections.filter((inspection) => inspection.activeJobId === job.aj);
+      const draftCount = visitRecords.filter((inspection) => inspection.status === "Draft").length;
       return `<article class="active-job-card${current ? " current" : ""}">
         <p class="eyebrow">${escapeHTML(job.aj)}${current ? " • CURRENT JOB" : ""}</p>
         <h4>${escapeHTML(job.inspectionNo)} — ${escapeHTML(job.projectName)}</h4>
         <p><strong>Reporting vendor:</strong> ${escapeHTML(job.reportingVendor)}</p>
         <p><strong>Vendor job:</strong> ${escapeHTML(job.vendorJobs || "—")}</p>
         <p><strong>Status:</strong> ${escapeHTML(job.status)}</p>
-        ${draftCount ? `<p class="inspection-autosave-status">${draftCount} autosaved draft${draftCount === 1 ? "" : "s"}</p>` : ""}
-        <button class="button ${current ? "button-secondary" : "inspection-button"} button-small" type="button" data-work-active-job="${escapeHTML(job.aj)}">${draftCount ? "Continue Autosaved Draft" : (current ? "New Inspection for Current AJ" : "Switch to This AJ")}</button>
+        <p class="inspection-autosave-status">${visitRecords.length ? `${visitRecords.length} linked inspection${visitRecords.length === 1 ? "" : "s"}${draftCount ? ` • ${draftCount} draft` : ""}` : (selectedTrip ? "Not yet linked to this visit" : "Standalone available")}</p>
+        <button class="button ${current ? "button-secondary" : "inspection-button"} button-small" type="button" data-work-active-job="${escapeHTML(job.aj)}">${visitRecords.length ? "Open Linked Inspection" : (selectedTrip ? "Add Job to This Visit" : "Start Standalone Inspection")}</button>
       </article>`;
     }).join("") : `<div class="inspection-empty">Choose a vendor/location to see its open Active Jobs.</div>`;
+    if ($("newInspectionBtn")) $("newInspectionBtn").textContent = selectedTrip ? "Add Inspection to Visit" : "New Inspection in This Context";
   }
 
   function switchActiveJob(activeJobId) {
@@ -779,11 +947,13 @@
     const state = readState();
     state.settings.currentActiveJobId = job.aj;
     state.settings.activeJobsWorkspaceVendor = $("activeJobsVendor")?.value || job.reportingVendor;
+    state.settings.activeJobsWorkspaceTripId = $("activeJobsVisit")?.value || "__standalone__";
     writeState(state);
-    const draft = state.settings.inspections
-      .filter((inspection) => inspection.activeJobId === job.aj && inspection.status === "Draft")
+    const tripId = state.settings.activeJobsWorkspaceTripId === "__standalone__" ? "" : (state.settings.activeJobsWorkspaceTripId || "");
+    const linked = state.settings.inspections
+      .filter((inspection) => inspection.activeJobId === job.aj && (inspection.tripId || "") === tripId)
       .sort((a, b) => String(b.modifiedISO || "").localeCompare(String(a.modifiedISO || "")))[0] || null;
-    openInspectionForm(draft, "", { activeJobId: job.aj, fastSwitch: true });
+    openInspectionForm(linked, linked ? "" : tripId, { activeJobId: job.aj, fastSwitch: true });
   }
 
   function showInspectionSection(openNew = false, tripId = "") {
@@ -791,6 +961,13 @@
       $(id)?.classList.add("hidden");
     });
     $("inspectionSection")?.classList.remove("hidden");
+    if (tripId) {
+      const state = readState();
+      const trip = getTripById(state, tripId);
+      state.settings.activeJobsWorkspaceTripId = tripId;
+      if (trip?.vendor) state.settings.activeJobsWorkspaceVendor = trip.vendor;
+      writeState(state);
+    }
     renderActiveJobsWorkspace();
     refreshInspectionReportTemplateStatus();
     if (openNew) openInspectionForm(null, tripId);
@@ -975,36 +1152,35 @@
     }
   }
 
-  async function recoverLinkedTripPhotos(trip) {
-    if (!trip?.id || !window.MileageMediaStore?.getPhotosByOwner) return;
-    try {
-      const stored = await window.MileageMediaStore.getPhotosByOwner(trip.id);
-      const knownIds = new Set(currentPhotos.map((photo) => photo.id));
-      const recovered = stored
-        .filter((photo) => !knownIds.has(photo.id))
-        .map((photo) => ({
-          id: photo.id,
-          name: photo.name || "Trip photo",
-          type: photo.type || "image/jpeg",
-          size: Number(photo.size || 0),
-          width: Number(photo.width || 0),
-          height: Number(photo.height || 0),
-          createdISO: photo.createdISO || "",
-          caption: photo.caption || "",
-          sourceTripId: trip.id
-        }));
-      if (!recovered.length || currentTripId !== trip.id) return;
-      currentPhotos.push(...recovered);
-      recovered.forEach((photo) => originalPhotoIds.add(photo.id));
-      await renderPhotoEditors();
-      const status = $("inspectionPhotoStatus");
-      if (status) {
-        status.textContent = `${currentPhotos.length} trip photo${currentPhotos.length === 1 ? "" : "s"} attached to this inspection record.`;
-        status.className = "gps-status good";
-      }
-    } catch (error) {
-      console.warn("Could not recover linked trip photos:", error);
+  async function renderLinkedTripPhotos(trip) {
+    const panel = $("inspectionLinkedTripPhotos");
+    linkedTripPhotoObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+    linkedTripPhotoObjectUrls = [];
+    if (!panel) return;
+    const photos = Array.isArray(trip?.photos) ? trip.photos : [];
+    if (!trip || !photos.length) {
+      panel.innerHTML = trip
+        ? `<div class="inspection-empty compact">No trip-level photos are attached to this visit.</div>`
+        : `<div class="inspection-empty compact">Choose a mileage trip to show its separate visit photos.</div>`;
+      return;
     }
+    panel.innerHTML = `<p class="muted">Trip-level photos stay with the visit and are shown here for context. They are not copied into this inspection.</p><div class="inspection-photo-thumbnails">${photos.map((photo) => `
+      <button type="button" data-view-photo="${escapeHTML(photo.id)}" aria-label="Open ${escapeHTML(photo.caption || photo.name || "trip photo")}"><span>Loading…</span></button>
+    `).join("")}</div>`;
+    await Promise.all(photos.map(async (photo) => {
+      try {
+        const stored = await window.MileageMediaStore?.getPhoto(photo.id);
+        if (!stored?.blob || currentTripId !== trip.id) return;
+        const button = panel.querySelector(`[data-view-photo="${CSS.escape(photo.id)}"]`);
+        if (!button) return;
+        const url = URL.createObjectURL(stored.blob);
+        linkedTripPhotoObjectUrls.push(url);
+        button.dataset.photoUrl = url;
+        button.innerHTML = `<img src="${url}" alt="${escapeHTML(photo.caption || photo.name || "Trip photo")}">`;
+      } catch (error) {
+        console.warn("Could not load a linked trip photo:", error);
+      }
+    }));
   }
 
   function workflowSectionMarkup(values, activeJob) {
@@ -1058,24 +1234,30 @@
     currentTripId = duplicating ? "" : (tripId || inspection?.tripId || "");
     const trip = getTripById(state, currentTripId);
     const inspectionPhotos = !duplicating && Array.isArray(inspection?.photos)
-      ? inspection.photos.map((photo) => ({ ...photo }))
+      ? inspection.photos.filter((photo) => !photo.sourceTripId).map((photo) => ({ ...photo }))
       : [];
-    const photoIds = new Set(inspectionPhotos.map((photo) => photo.id));
-    const inheritedTripPhotos = Array.isArray(trip?.photos)
-      ? trip.photos
-        .filter((photo) => !photoIds.has(photo.id))
-        .map((photo) => ({ ...photo, sourceTripId: trip.id }))
-      : [];
-    currentPhotos = [...inspectionPhotos, ...inheritedTripPhotos];
+    currentPhotos = inspectionPhotos;
     originalPhotoIds = new Set(currentPhotos.map((photo) => photo.id));
     const snapshot = duplicating ? null : (inspection?.tripSnapshot || tripSnapshot(trip));
     const values = inspection || {};
-    const activeJob = activeJobById(options.activeJobId || values.activeJobId || state.settings.currentActiveJobId);
+    const activeJob = options.standalone
+      ? null
+      : activeJobById(options.activeJobId || values.activeJobId || state.settings.currentActiveJobId);
+    let workspaceChanged = false;
     if (activeJob && state.settings.currentActiveJobId !== activeJob.aj) {
       state.settings.currentActiveJobId = activeJob.aj;
       if (!state.settings.activeJobsWorkspaceVendor) state.settings.activeJobsWorkspaceVendor = activeJob.reportingVendor;
-      writeState(state);
+      workspaceChanged = true;
     }
+    if (trip && state.settings.activeJobsWorkspaceTripId !== trip.id) {
+      state.settings.activeJobsWorkspaceTripId = trip.id;
+      state.settings.activeJobsWorkspaceVendor = trip.vendor || state.settings.activeJobsWorkspaceVendor || "";
+      workspaceChanged = true;
+    } else if (options.standalone && state.settings.activeJobsWorkspaceTripId !== "__standalone__") {
+      state.settings.activeJobsWorkspaceTripId = "__standalone__";
+      workspaceChanged = true;
+    }
+    if (workspaceChanged) writeState(state);
 
     const date = values.date || (trip ? inputDateFromTrip(trip.date) : todayInputValue());
     const customer = values.customer ?? activeJob?.client ?? trip?.customer ?? "";
@@ -1163,13 +1345,18 @@
         <div id="inspectionReportPreview" class="inspection-report-preview${values.generatedReportLanguage ? "" : " hidden"}">${values.generatedReportLanguage ? `<strong>Draft report language</strong><p>${escapeHTML(values.generatedReportLanguage)}</p><small>Generated only from entered facts. Review before reporting.</small>` : ""}</div>
 
         <div class="section-heading compact">
+          <div><p class="eyebrow">Visit context</p><h3>Trip-Level Photos</h3></div>
+        </div>
+        <div id="inspectionLinkedTripPhotos" class="inspection-linked-trip-photos"></div>
+
+        <div class="section-heading compact">
           <div>
             <p class="eyebrow">Stored privately on this device</p>
-            <h3>Inspection Photos</h3>
+            <h3>Inspection-Specific Photos</h3>
           </div>
           <span id="inspectionPhotoCount" class="pill">0</span>
         </div>
-          <p class="muted">Photos are reduced to a practical size for use in this app. Backups contain filenames and descriptions only; retain original images in iPhone Photos.</p>
+          <p class="muted">These photos belong only to this inspection/AJ. Trip-level visit photos remain separate above. Backups contain filenames and descriptions only; retain original images in iPhone Photos.</p>
         <div class="form-actions wrap">
           <button id="takeInspectionPhotoBtn" class="button inspection-button button-small" type="button">Take Photo</button>
           <button id="chooseInspectionPhotosBtn" class="button button-secondary button-small" type="button">Choose Photos</button>
@@ -1197,10 +1384,11 @@
     populateProjectDatalist(state);
     renderFollowUpEditors(Array.isArray(values.followUps) ? values.followUps : []);
     renderPhotoEditors();
-    recoverLinkedTripPhotos(trip);
+    renderLinkedTripPhotos(trip);
     renderSelectedTripSummary(snapshot);
     updateInspectionWorkflowSections();
     updateCoatingRequirementSummary();
+    renderActiveJobsWorkspace(state);
     panel.scrollIntoView({ behavior: "auto", block: "start" });
   }
 
@@ -1322,6 +1510,8 @@
       : [];
     photoObjectUrls.forEach((url) => URL.revokeObjectURL(url));
     photoObjectUrls = [];
+    linkedTripPhotoObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+    linkedTripPhotoObjectUrls = [];
     if (abandonedInspectionId && window.MileageMediaStore) {
       window.MileageMediaStore.deleteInspectionPhotos(abandonedInspectionId).catch((error) => {
         console.warn("Could not remove abandoned inspection photos:", error);
@@ -1378,6 +1568,7 @@
     currentTripId = tripId;
     if (!trip) {
       renderSelectedTripSummary(null);
+      renderLinkedTripPhotos(null);
       return;
     }
     $("inspectionDate").value = inputDateFromTrip(trip.date);
@@ -1392,6 +1583,7 @@
     $("inspectionEndTime").value = trip.endTime || "";
     $("inspectionHours").value = calculateHours(trip.startTime, trip.endTime);
     renderSelectedTripSummary(tripSnapshot(trip));
+    renderLinkedTripPhotos(trip);
   }
 
   function collectFollowUps() {
@@ -1487,6 +1679,7 @@
 
       nextState.settings.currentActiveJobId = inspection.activeJobId || nextState.settings.currentActiveJobId || "";
       nextState.settings.activeJobsWorkspaceVendor = inspection.inspectionLocation || inspection.reportingVendor || nextState.settings.activeJobsWorkspaceVendor || "";
+      nextState.settings.activeJobsWorkspaceTripId = inspection.tripId || "__standalone__";
       nextState.settings.customers = Array.isArray(nextState.settings.customers) ? nextState.settings.customers : [];
       nextState.settings.vendors = Array.isArray(nextState.settings.vendors) ? nextState.settings.vendors : [];
       if (inspection.customer && !nextState.settings.customers.includes(inspection.customer)) nextState.settings.customers.push(inspection.customer);
@@ -3033,10 +3226,10 @@
     if (!$('inspectionSection')) return;
     const state = readState();
     const signature = JSON.stringify({
-      trips: state.trips.map((trip) => [trip.id, trip.endISO, trip.miles]),
+      trips: state.trips.map((trip) => [trip.id, trip.endISO, trip.miles, trip.notes, (trip.photos || []).map((photo) => [photo.id, photo.caption])]),
       inspections: state.settings.inspections.map((inspection) => [inspection.id, inspection.modifiedISO]),
       ignored: state.settings.inspectionIgnoredTripIds,
-      activeJob: [state.settings.currentActiveJobId, state.settings.activeJobsWorkspaceVendor],
+      activeJob: [state.settings.currentActiveJobId, state.settings.activeJobsWorkspaceVendor, state.settings.activeJobsWorkspaceTripId],
       backup: [state.backup?.pendingTripCount, state.backup?.pendingChangeCount, state.backup?.lastConfirmedISO]
     });
     if (!force && signature === lastStateSignature) return;
@@ -3051,7 +3244,11 @@
     $("inspectionBtn")?.addEventListener("click", () => showInspectionSection(false));
     $("inspectionNavBtn")?.addEventListener("click", () => showInspectionSection(false));
     $("closeInspectionSection")?.addEventListener("click", hideInspectionSection);
-    $("newInspectionBtn")?.addEventListener("click", () => openInspectionForm());
+    $("newInspectionBtn")?.addEventListener("click", () => {
+      const state = readState();
+      openInspectionForm(null, $("activeJobsVisit")?.value || "", { activeJobId: state.settings.currentActiveJobId || "" });
+    });
+    $("standaloneInspectionBtn")?.addEventListener("click", () => openInspectionForm(null, "", { standalone: true }));
     $("inspectionListViewBtn")?.addEventListener("click", () => setActiveView("inspections"));
     $("followUpViewBtn")?.addEventListener("click", () => setActiveView("followups"));
     $("exportInspectionsBtn")?.addEventListener("click", exportInspectionCSV);
@@ -3095,6 +3292,24 @@
       const activeJobButton = event.target.closest("[data-work-active-job]");
       if (activeJobButton) {
         switchActiveJob(activeJobButton.dataset.workActiveJob);
+        return;
+      }
+
+      const workspaceInspectionButton = event.target.closest("[data-open-workspace-inspection]");
+      if (workspaceInspectionButton) {
+        if ($("inspectionForm") && editingInspectionId !== workspaceInspectionButton.dataset.openWorkspaceInspection) {
+          saveInspectionDraft({ silent: true });
+        }
+        const state = readState();
+        const inspection = state.settings.inspections.find((item) => item.id === workspaceInspectionButton.dataset.openWorkspaceInspection);
+        if (inspection) openInspectionForm(inspection);
+        return;
+      }
+
+      const editWorkspaceTripButton = event.target.closest("[data-edit-workspace-trip]");
+      if (editWorkspaceTripButton) {
+        $("inspectionSection")?.classList.add("hidden");
+        document.dispatchEvent(new CustomEvent("mileage:edit-trip", { detail: { tripId: editWorkspaceTripButton.dataset.editWorkspaceTrip } }));
         return;
       }
 
@@ -3282,6 +3497,16 @@
       if (event.target.id === "activeJobsVendor") {
         const state = readState();
         state.settings.activeJobsWorkspaceVendor = event.target.value;
+        state.settings.activeJobsWorkspaceTripId = "";
+        writeState(state);
+        renderActiveJobsWorkspace();
+        return;
+      }
+      if (event.target.id === "activeJobsVisit") {
+        const state = readState();
+        state.settings.activeJobsWorkspaceTripId = event.target.value || "__standalone__";
+        const trip = getTripById(state, event.target.value);
+        if (trip?.vendor) state.settings.activeJobsWorkspaceVendor = trip.vendor;
         writeState(state);
         renderActiveJobsWorkspace();
         return;
