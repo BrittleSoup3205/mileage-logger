@@ -4,7 +4,7 @@
 
 This branch starts the next Mileage Logger inspection-workflow build. It is intentionally separate from `main` until the workflow is reviewed and tested.
 
-## Agreed business rules implemented in the prototype
+## Agreed business rules implemented in the production inspection database
 
 - `AJ-###` is the permanent internal Active Job identifier.
 - One Active Job represents one S&B reporting unit.
@@ -30,23 +30,35 @@ This branch starts the next Mileage Logger inspection-workflow build. It is inte
 - Inspection completion is separate from Active Job completion.
 - A completed inspection may still have open follow-up.
 
-## Prototype pages/files
+## Production integration
+
+The Active Jobs workspace is loaded inside the existing **Inspections** screen in `index.html`. Active Job inspections use the existing `settings.inspections` database, backup/restore state, photo store, follow-up tracking, inspection exports, and offline application shell.
+
+- Switching AJs autosaves and later resumes the AJ's current draft.
+- The current-AJ banner stays above the inspection form as a visual safeguard.
+- Photos and quick notes are stored on the current inspection record, which carries its `activeJobId`.
+- Reporting vendor is fixed from the selected AJ while inspection location/subvendor remains separately editable.
+- Existing mileage trips remain single records. Multiple AJ inspections can reference the same `tripId`, and the Active Jobs activity CSV emits that trip's mileage once with all linked AJ identifiers.
+- Draft, completion, Active Job status, and open follow-up remain independent states.
+- Full backups include the integrated inspection/AJ fields through the existing app-state backup. Existing photo and private-template handling is unchanged.
+
+The original prototype files remain on the branch as design-history references:
 
 - `active-jobs-workspace.html`
 - `active-jobs-workspace.css`
 - `active-jobs-workspace.js`
 
-Open `active-jobs-workspace.html` on the development branch to review the current workflow.
+Use the normal `index.html` app for production-workflow testing.
 
 ## Active Jobs Master handling
 
-The prototype seeds the current Active Jobs rows from the uploaded Active Jobs Master rather than silently rewriting them. It also detects duplicate S&B inspection number + reporting vendor combinations for review.
+The integrated workspace reads the current Active Jobs rows without silently rewriting them. It detects duplicate S&B inspection number + reporting vendor combinations for review.
 
 This is important because the current workbook contains separate Smith Tank rows for `E10379-410` (`AJ-002` and `AJ-003`), while the newly agreed reporting-unit rule indicates those activities may belong under one Active Job/reporting stream. That workbook correction should be deliberate and reviewed rather than performed automatically by the prototype.
 
 ## Coating workflow included
 
-The prototype includes facility-aware coating selection for Shell Norco and Shell Geismar, with stored system summaries sufficient to drive the low-entry QA form and draft report wording.
+The integrated inspection form includes facility-aware coating selection for Shell Norco and Shell Geismar, with stored system summaries sufficient to drive the low-entry QA form and draft report wording.
 
 Routine coating fields include:
 
@@ -63,7 +75,7 @@ Routine coating fields include:
 
 ## Structural steel workflow included
 
-The prototype includes:
+The integrated inspection form includes:
 
 - Shop visual
 - Dimensional
@@ -74,23 +86,22 @@ Routine checks include material/identification, weld visual condition, workmansh
 
 ## Draft/report behavior
 
-- Drafts save locally in the prototype.
+- Drafts autosave inside the production inspection database.
 - Switching jobs saves the current draft first.
 - Completed inspection records remain separate from Active Job status.
 - Draft report language is generated from the entered facts.
 - Numeric values are not invented when only a satisfactory result was entered.
 
-## Not yet integrated into production
+## Validation status
 
-This branch does **not** yet replace the existing inspection database in `main`.
+Completed on the development branch:
 
-Before merge, the next build steps are:
+- JavaScript syntax checks for the app, inspection database, Active Jobs data, and service worker
+- Direct regression test proving one trip linked to multiple AJs produces one mileage row
+- Desktop browser checks for AJ selection, conflict flags, current-job safeguards, autosave/resume, coating and structural-steel workflows, completion with open follow-up, and reporting vendor/location separation
+- Report-language checks with blank, valid, and invalid measurement input paths
+- Phone-size responsive-layout check at 390 × 844
+- Offline reload with the local server stopped, including retained inspection/AJ records
+- Browser console check with no warnings or errors
 
-1. Review the prototype workflow on phone/desktop.
-2. Resolve/confirm how legacy Active Jobs rows that conflict with the new reporting-unit rule should be handled.
-3. Connect the Active Jobs workspace to the production inspection state/backup model.
-4. Add photo/quick-note attachment to the selected AJ/inspection.
-5. Connect the vendor workspace to mileage trips without duplicating mileage.
-6. Add production navigation from the main app.
-7. Run syntax, browser, phone-size, backup/restore, offline, and regression testing.
-8. Only merge after explicit user approval.
+Before merge, complete intended-device acceptance testing for camera/photo capture, GPS permission and route behavior, private STA generation, native Save to Files backup confirmation, and restore from an actual retained backup. The Active Jobs Master conflicts remain review flags; do not edit the authoritative workbook from this app. Only merge after explicit user approval.

@@ -1248,10 +1248,13 @@
       if (inspection.tripId !== trip.id) return;
       inspection.tripSnapshot = makeTripSnapshot(trip);
       inspection.date = tripDateToInspectionDate(trip.date);
-      inspection.customer = trip.customer;
       inspection.vendor = trip.vendor;
-      inspection.projectNumber = trip.projectNumber || "";
-      inspection.activity = trip.purpose;
+      inspection.inspectionLocation = trip.vendor;
+      if (!inspection.activeJobId) {
+        inspection.customer = trip.customer;
+        inspection.projectNumber = trip.projectNumber || "";
+        inspection.activity = trip.purpose;
+      }
       inspection.startTime = trip.startTime;
       inspection.endTime = trip.endTime;
       inspection.hoursOnSite = calculateHoursBetween(trip.startTime, trip.endTime);
@@ -1348,74 +1351,12 @@
     return rows.map((row) => row.map(csvEscape).join(",")).join("\r\n");
   }
 
-  function excelDate(value) {
-    const text = String(value ?? "").trim();
-    if (!text) return "";
-    const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
-    const usMatch = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (usMatch) {
-      return `${usMatch[3]}-${usMatch[1].padStart(2, "0")}-${usMatch[2].padStart(2, "0")}`;
-    }
-    return text;
-  }
-
-  function activityNotes(...values) {
-    return values
-      .map((value) => String(value ?? "").trim())
-      .filter(Boolean)
-      .filter((value, index, all) => all.indexOf(value) === index)
-      .join(" | ");
-  }
-
   function makeActiveJobsActivityCSV() {
     const inspections = Array.isArray(state.settings?.inspections) ? state.settings.inspections : [];
-    const tripsById = new Map(state.trips.map((trip) => [trip.id, trip]));
-    const linkedTripIds = new Set(inspections.map((inspection) => inspection.tripId).filter(Boolean));
-    const rows = [[
-      "Visit ID",
-      "Date",
-      "Vendor / Facility",
-      "Location",
-      "Inspection Job #",
-      "Shop / Job #",
-      "Client / Project",
-      "Mileage",
-      "Notes"
-    ]];
-
-    inspections.forEach((inspection) => {
-      const trip = inspection.tripId ? tripsById.get(inspection.tripId) : null;
-      const tripData = trip || inspection.tripSnapshot || null;
-      rows.push([
-        `inspection:${inspection.id}`,
-        excelDate(inspection.date || tripData?.date),
-        inspection.vendor || "",
-        "",
-        inspection.projectNumber || "",
-        inspection.purchaseOrderJob || "",
-        inspection.customer || "",
-        tripData?.miles ?? "",
-        activityNotes(tripData?.notes, inspection.activity, inspection.summary, inspection.observations)
-      ]);
-    });
-
-    state.trips.forEach((trip) => {
-      if (linkedTripIds.has(trip.id)) return;
-      rows.push([
-        `trip:${trip.id}`,
-        excelDate(trip.date),
-        trip.vendor || "",
-        "",
-        trip.projectNumber || "",
-        "",
-        trip.customer || "",
-        trip.miles ?? "",
-        activityNotes(trip.purpose, trip.notes)
-      ]);
-    });
-
-    return `\uFEFF${rows.map((row) => row.map(csvEscape).join(",")).join("\r\n")}`;
+    if (!window.MileageActiveJobsData?.makeActivityCSV) {
+      throw new Error("The Active Jobs activity component is unavailable.");
+    }
+    return window.MileageActiveJobsData.makeActivityCSV(state.trips, inspections);
   }
 
   function downloadFile(filename, content, type) {
