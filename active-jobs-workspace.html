@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#14213d">
+  <title>Mileage Logger — Active Jobs Workspace</title>
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./active-jobs-workspace.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Mileage Logger</h1>
+      <p class="topbar-subtitle">Active Jobs / Inspection Workflow Prototype</p>
+    </div>
+  </header>
+
+  <main class="app-shell workspace-shell">
+    <section class="card warning-card">
+      <strong>Development branch prototype.</strong>
+      <p>This page is for building and testing the new Active Jobs inspection workflow. It does not replace the current production inspection screen yet.</p>
+    </section>
+
+    <section class="card" aria-labelledby="vendorWorkspaceTitle">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Vendor workspace</p>
+          <h2 id="vendorWorkspaceTitle">Choose Where You Are Working</h2>
+        </div>
+      </div>
+      <label>
+        Vendor / inspection location
+        <select id="workspaceVendor"></select>
+      </label>
+      <p class="muted">All open Active Jobs associated with this vendor are shown below. One mileage trip may support multiple Active Jobs.</p>
+      <div id="jobConflictWarning" class="workspace-warning hidden"></div>
+      <div id="activeJobCards" class="workspace-job-grid"></div>
+    </section>
+
+    <section id="currentJobCard" class="card hidden" aria-labelledby="currentJobTitle">
+      <div class="workspace-current-job">
+        <div>
+          <p class="eyebrow">Current Active Job</p>
+          <h2 id="currentJobTitle">—</h2>
+          <p id="currentJobSubtitle" class="muted"></p>
+        </div>
+        <button id="switchJobBtn" class="button button-secondary" type="button">Switch Job</button>
+      </div>
+      <div id="currentJobFacts" class="workspace-facts"></div>
+    </section>
+
+    <section id="inspectionCard" class="card hidden" aria-labelledby="inspectionTitle">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Inspection draft</p>
+          <h2 id="inspectionTitle">New Inspection</h2>
+          <p id="draftStatus" class="muted">Draft saves automatically.</p>
+        </div>
+      </div>
+
+      <form id="inspectionForm" autocomplete="off">
+        <div class="workspace-two-col">
+          <label>
+            Inspection date
+            <input id="inspectionDate" type="date" required>
+          </label>
+          <label>
+            Inspection type
+            <select id="inspectionType" required>
+              <option value="">Choose…</option>
+              <option>Coating Inspection</option>
+              <option>Structural Steel — Shop Visual</option>
+              <option>Structural Steel — Dimensional</option>
+              <option>Structural Steel — Post-Galvanizing</option>
+              <option>Structural Steel — Final / Release</option>
+              <option>Fit-up Inspection</option>
+              <option>Hydro Test</option>
+              <option>NDE Review</option>
+              <option>Final Inspection</option>
+              <option>Document Review</option>
+              <option>Other</option>
+            </select>
+          </label>
+        </div>
+
+        <fieldset class="workspace-fieldset">
+          <legend>Item identification</legend>
+          <div class="workspace-two-col">
+            <label>Equipment tag<input id="equipmentTag" placeholder="Example: F0501"></label>
+            <label>ISO drawing number<input id="isoNumber" placeholder="Example: 326-0041-05A"></label>
+            <label>Vendor job number<input id="vendorJobNumber" placeholder="Example: 255424"></label>
+            <label>Piece / spool number<input id="pieceSpoolNumber" placeholder="Example: 35 or 2S1"></label>
+          </div>
+          <label>Vendor Load # <input id="vendorLoadNumber" placeholder="Enter exactly as shown on vendor shipping list"></label>
+        </fieldset>
+
+        <section id="coatingSection" class="workspace-subsection hidden">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">Coating QA surveillance</p>
+              <h3>Facility-Specific Coating Check</h3>
+            </div>
+          </div>
+          <div class="workspace-two-col">
+            <label>
+              Coating system
+              <select id="coatingSystem"></select>
+            </label>
+            <label>
+              Manufacturer / product family
+              <input id="coatingManufacturer" placeholder="Optional if system already identifies products">
+            </label>
+          </div>
+          <div id="coatingRequirementSummary" class="summary-box"></div>
+          <div class="workspace-check-grid">
+            <label>Environmental conditions<select id="coatEnvironment"><option>Satisfactory</option><option>Unsatisfactory</option><option>Not observed</option></select></label>
+            <label>Blast / surface prep<select id="coatBlast"><option>Satisfactory</option><option>Unsatisfactory</option><option>Not observed</option></select></label>
+            <label>Anchor profile<select id="coatProfile"><option>Satisfactory</option><option>Unsatisfactory</option><option>Not checked</option></select></label>
+            <label>Products verified<select id="coatProducts"><option>Yes</option><option>No</option><option>Not observed</option></select></label>
+            <label>DFT<select id="coatDft"><option>Satisfactory</option><option>Unsatisfactory</option><option>Not observed</option></select></label>
+            <label>Appearance<select id="coatAppearance"><option>Satisfactory</option><option>Unsatisfactory</option></select></label>
+            <label>Vendor QC<select id="coatVendorQc"><option>Satisfactory</option><option>Issue noted</option><option>Not reviewed</option></select></label>
+          </div>
+          <label>Optional anchor profile readings<input id="profileReadings" placeholder="Example: 2.2, 2.5, 2.4"></label>
+          <label>Optional DFT readings<input id="dftReadings" placeholder="Leave blank when satisfactory and exact values are not needed"></label>
+        </section>
+
+        <section id="structuralSection" class="workspace-subsection hidden">
+          <div class="section-heading compact">
+            <div>
+              <p class="eyebrow">Structural steel QA surveillance</p>
+              <h3>Inspection Checks</h3>
+            </div>
+          </div>
+          <div class="workspace-check-grid">
+            <label>Materials / identification<select id="steelMaterial"><option>Satisfactory</option><option>Issue noted</option><option>Not observed</option></select></label>
+            <label>Weld visual condition<select id="steelWelds"><option>Satisfactory</option><option>Issue noted</option><option>Not observed</option></select></label>
+            <label>General workmanship<select id="steelWorkmanship"><option>Satisfactory</option><option>Issue noted</option><option>Not observed</option></select></label>
+            <label>Dimensional inspection<select id="steelDimensions"><option>Satisfactory</option><option>Issue noted</option><option>Not performed</option></select></label>
+            <label>Post-galvanizing condition<select id="steelGalv"><option>Not applicable</option><option>Satisfactory</option><option>Issue noted</option></select></label>
+          </div>
+        </section>
+
+        <fieldset class="workspace-fieldset">
+          <legend>Results / exceptions</legend>
+          <label>
+            Deficiencies
+            <select id="deficiencyStatus">
+              <option>None</option>
+              <option>Issue noted</option>
+            </select>
+          </label>
+          <div id="deficiencyDetails" class="hidden">
+            <label>Affected tag / ISO / job / piece<input id="deficiencyItem" placeholder="Use the most specific identifier available"></label>
+            <label>Condition<textarea id="deficiencyCondition" rows="3" placeholder="Short factual description"></textarea></label>
+            <label>Disposition<select id="deficiencyDisposition"><option>Marked for repair</option><option>Corrected during visit</option><option>Follow-up required</option><option>Accepted after correction</option><option>Hold / not accepted</option></select></label>
+          </div>
+          <label>Quick note<textarea id="quickNote" rows="3" placeholder="Optional field note"></textarea></label>
+        </fieldset>
+
+        <div class="workspace-two-col">
+          <label>
+            Inspection result
+            <select id="inspectionResult">
+              <option>Acceptable</option>
+              <option>Acceptable with follow-up</option>
+              <option>Not acceptable</option>
+              <option>Partial inspection</option>
+            </select>
+          </label>
+          <label>
+            Inspection release
+            <select id="inspectionRelease">
+              <option>Not required</option>
+              <option>Pending</option>
+              <option>Ready for release</option>
+              <option>Released</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="form-actions wrap">
+          <button id="saveDraftBtn" class="button button-secondary" type="button">Save Draft</button>
+          <button class="button button-primary" type="submit">Complete Inspection</button>
+          <button id="generateSummaryBtn" class="button button-secondary" type="button">Preview Report Language</button>
+        </div>
+      </form>
+      <div id="reportPreview" class="summary-box hidden"></div>
+    </section>
+
+    <section class="card" aria-labelledby="savedDraftsTitle">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Saved locally in this prototype</p>
+          <h2 id="savedDraftsTitle">Drafts & Completed Inspections</h2>
+        </div>
+      </div>
+      <div id="savedInspectionList"></div>
+    </section>
+  </main>
+
+  <script src="./active-jobs-workspace.js"></script>
+</body>
+</html>
