@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const WORKSPACE_KEY = "mileage_logger_pr17_active_jobs_workspace_v1";
+  const WORKSPACE_KEY = "mileage_logger_active_jobs_workspace_v1";
 
   const FACILITY_RULES = [
     { prefix: "E10379", client: "Shell", facility: "Norco" },

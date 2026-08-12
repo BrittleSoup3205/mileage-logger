@@ -183,6 +183,14 @@
     await withStore("readwrite", (store) => store.delete(id));
   }
 
+  async function updatePhotoCaption(id, caption) {
+    if (!id) return;
+    const record = await getPhoto(id);
+    if (!record) return;
+    record.caption = String(caption || "");
+    await withStore("readwrite", (store) => store.put(record));
+  }
+
   async function deleteInspectionPhotos(inspectionId) {
     const database = await openDatabase();
     try {
@@ -225,6 +233,7 @@
     getPhoto,
     getAllPhotos,
     getPhotosByOwner,
+    updatePhotoCaption,
     deletePhoto,
     deleteInspectionPhotos,
     replaceAllPhotos

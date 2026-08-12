@@ -11,7 +11,7 @@
   <title>PR #17 Test — Mileage Logger</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=active-jobs-production-3">
+  <link rel="stylesheet" href="./styles.css?v=visit-workspace-2">
 </head>
 <body>
   <div role="status" style="background:#7c2d12;color:#fff;padding:.55rem 1rem;text-align:center;font-weight:700;letter-spacing:.02em;">PR #17 TEST PREVIEW — Data is isolated from the live app</div>
@@ -333,6 +333,24 @@
           <label>Notes<textarea id="tripEditNotes" rows="4"></textarea></label>
           <div id="tripEditMileagePreview" class="miles-preview"></div>
           <p class="privacy-note compact-note">GPS locations and route points are kept exactly as originally recorded.</p>
+          <section class="trip-edit-photo-section" aria-labelledby="tripEditPhotoTitle">
+            <div class="active-trip-photo-heading">
+              <div>
+                <span>Trip-level attachments</span>
+                <h3 id="tripEditPhotoTitle">Visit Photos</h3>
+                <p class="muted">These photos belong to the trip/visit. Inspection-specific photos stay on their inspection records.</p>
+              </div>
+              <span id="tripEditPhotoCount" class="pill">0</span>
+            </div>
+            <div class="form-actions wrap">
+              <button id="tripEditTakePhotoBtn" class="button button-primary button-small" type="button">Take Photo</button>
+              <button id="tripEditChoosePhotosBtn" class="button button-secondary button-small" type="button">Choose Photos</button>
+              <input id="tripEditTakePhotoInput" class="hidden" type="file" accept="image/*" capture="environment">
+              <input id="tripEditChoosePhotosInput" class="hidden" type="file" accept="image/*" multiple>
+            </div>
+            <div id="tripEditPhotoStatus" class="gps-status">Add, caption, or remove trip-level photos.</div>
+            <div id="tripEditPhotoList" class="active-trip-photo-list"></div>
+          </section>
           <div class="form-actions wrap">
             <button class="button button-primary" type="submit">Save Trip Changes</button>
             <button id="cancelTripEditBtn" class="button button-secondary" type="button">Cancel</button>
@@ -533,10 +551,10 @@
 
   <script src="./vendor/pdf-lib.min.js"></script>
   <script src="./vendor/fflate.min.js"></script>
-  <script src="./media-store.js?v=active-jobs-production-3"></script>
-  <script src="./active-jobs-data.js?v=active-jobs-production-3"></script>
-  <script src="./app.js?v=active-jobs-production-3"></script>
-  <script src="./inspections.js?v=active-jobs-production-3"></script>
+  <script src="./media-store.js?v=visit-workspace-2"></script>
+  <script src="./active-jobs-data.js?v=visit-workspace-2"></script>
+  <script src="./app.js?v=visit-workspace-2"></script>
+  <script src="./inspections.js?v=visit-workspace-2"></script>
 </body>
 </html>
 

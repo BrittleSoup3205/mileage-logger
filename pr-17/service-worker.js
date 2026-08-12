@@ -1,13 +1,13 @@
 const CACHE_PREFIX = "mileage-logger-pr-17-";
-const CACHE_NAME = `${CACHE_PREFIX}v44`;
+const CACHE_NAME = `${CACHE_PREFIX}visit-workspace-v47`;
 const APP_FILES = [
   "./",
-  "./index.html?v=active-jobs-production-3",
-  "./styles.css?v=active-jobs-production-3",
-  "./app.js?v=active-jobs-production-3",
-  "./inspections.js?v=active-jobs-production-3",
-  "./media-store.js?v=active-jobs-production-3",
-  "./active-jobs-data.js?v=active-jobs-production-3",
+  "./index.html?v=visit-workspace-2",
+  "./styles.css?v=visit-workspace-2",
+  "./app.js?v=visit-workspace-2",
+  "./inspections.js?v=visit-workspace-2",
+  "./media-store.js?v=visit-workspace-2",
+  "./active-jobs-data.js?v=visit-workspace-2",
   "./vendor/pdf-lib.min.js",
   "./vendor/fflate.min.js",
   "./manifest.webmanifest",
