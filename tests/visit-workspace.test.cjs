@@ -13,6 +13,10 @@ assert.match(index, /id="tripEditChoosePhotosBtn"/);
 assert.match(app, /data-trip-edit-photo-caption/);
 assert.match(app, /MileageMediaStore\.addPhoto\(tripId,/);
 assert.match(app, /data-remove-trip-edit-photo/);
+assert.match(app, /function tripPhotoMetadata\(\)/);
+assert.match(app, /function photoReferenceCount\(\)/);
+assert.match(app, /tripPhotoCount: tripPhotos\.length/);
+assert.match(app, /photoReferences: photoReferenceCount\(\)/);
 assert.match(mediaStore, /async function updatePhotoCaption/);
 
 assert.match(inspections, /id="activeJobsVisit"/);
@@ -22,6 +26,11 @@ assert.match(inspections, /id="visitNotesPhotos"/);
 assert.match(inspections, /data-open-workspace-inspection/);
 assert.match(inspections, /data-edit-workspace-trip/);
 assert.match(inspections, /standaloneInspectionBtn/);
+assert.match(
+  inspections,
+  /const selectedVendor = savedTrip\?\.vendor \|\| state\.settings\.activeJobsWorkspaceVendor/,
+  "An edited visit vendor should replace stale workspace vendor context"
+);
 
 assert.match(inspections, /inspection\.photos\.filter\(\(photo\) => !photo\.sourceTripId\)/);
 assert.doesNotMatch(inspections, /inheritedTripPhotos/);

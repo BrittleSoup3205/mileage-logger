@@ -844,7 +844,7 @@
       if (trip.vendor) vendors.add(trip.vendor);
     });
     const savedTrip = getTripById(state, state.settings.activeJobsWorkspaceTripId);
-    const selectedVendor = state.settings.activeJobsWorkspaceVendor || savedTrip?.vendor || currentJob?.reportingVendor || "";
+    const selectedVendor = savedTrip?.vendor || state.settings.activeJobsWorkspaceVendor || currentJob?.reportingVendor || "";
     vendorSelect.innerHTML = `<option value="">Choose vendor/location…</option>${[...vendors].sort().map((vendor) => `<option value="${escapeHTML(vendor)}"${vendor === selectedVendor ? " selected" : ""}>${escapeHTML(vendor)}</option>`).join("")}`;
 
     const visits = workspaceTripsForVendor(state, selectedVendor);

@@ -64,7 +64,7 @@ assert.match(rows[1], /AJ-003/);
 assert.equal((csv.match(/42\.5/g) || []).length, 1, "Shared mileage must appear exactly once");
 
 const indexHtml = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
-assert.match(indexHtml, /active-jobs-data\.js\?v=visit-workspace-2/);
+assert.match(indexHtml, /active-jobs-data\.js\?v=visit-workspace-4/);
 const serviceWorker = fs.readFileSync(path.join(__dirname, "..", "service-worker.js"), "utf8");
 for (const match of serviceWorker.matchAll(/"\.\/([^"?]+)(?:\?[^"\s]+)?"/g)) {
   const asset = match[1];
