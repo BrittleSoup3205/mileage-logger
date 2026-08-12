@@ -1,13 +1,13 @@
 const CACHE_PREFIX = "mileage-logger-pr-17-";
-const CACHE_NAME = `${CACHE_PREFIX}visit-workspace-v47`;
+const CACHE_NAME = `${CACHE_PREFIX}visit-workspace-v49`;
 const APP_FILES = [
   "./",
-  "./index.html?v=visit-workspace-2",
-  "./styles.css?v=visit-workspace-2",
-  "./app.js?v=visit-workspace-2",
-  "./inspections.js?v=visit-workspace-2",
-  "./media-store.js?v=visit-workspace-2",
-  "./active-jobs-data.js?v=visit-workspace-2",
+  "./index.html?v=visit-workspace-4",
+  "./styles.css?v=visit-workspace-4",
+  "./app.js?v=visit-workspace-4",
+  "./inspections.js?v=visit-workspace-4",
+  "./media-store.js?v=visit-workspace-4",
+  "./active-jobs-data.js?v=visit-workspace-4",
   "./vendor/pdf-lib.min.js",
   "./vendor/fflate.min.js",
   "./manifest.webmanifest",
@@ -50,4 +50,3 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
-

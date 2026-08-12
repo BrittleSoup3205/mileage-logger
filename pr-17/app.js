@@ -243,6 +243,30 @@
     return [...byId.values()];
   }
 
+  function tripPhotoMetadata() {
+    const byId = new Map();
+    const trips = [state.activeTrip, ...(Array.isArray(state.trips) ? state.trips : [])].filter(Boolean);
+    trips.forEach((trip) => {
+      (trip.photos || []).forEach((photo) => {
+        if (!photo?.id) return;
+        byId.set(photo.id, {
+          ...photo,
+          tripId: trip.id,
+          tripDate: trip.date || "",
+          tripVendor: trip.vendor || ""
+        });
+      });
+    });
+    return [...byId.values()];
+  }
+
+  function photoReferenceCount() {
+    return new Set([
+      ...inspectionPhotoMetadata().map((photo) => photo.id),
+      ...tripPhotoMetadata().map((photo) => photo.id)
+    ]).size;
+  }
+
   function formatBackupDate(iso) {
     if (!iso) return "No confirmed external backup yet";
     const date = new Date(iso);
@@ -263,7 +287,7 @@
     if (!pill || !text) return;
 
     const dataRequired = backupIsRequired();
-    const photoCount = inspectionPhotoMetadata().length;
+    const photoCount = photoReferenceCount();
     let dataStatus;
 
     if (dataRequired) {
@@ -1550,13 +1574,17 @@
 
   function buildBackupPackage() {
     ensureBackupState();
+    const inspectionPhotos = inspectionPhotoMetadata();
+    const tripPhotos = tripPhotoMetadata();
     return {
       backupFormat: "MileageLoggerDataBackup",
       backupVersion: 4,
       createdISO: new Date().toISOString(),
       tripCount: state.trips.length,
-      photoCount: inspectionPhotoMetadata().length,
-      photoManifest: inspectionPhotoMetadata(),
+      photoCount: inspectionPhotos.length,
+      tripPhotoCount: tripPhotos.length,
+      photoReferenceCount: new Set([...inspectionPhotos, ...tripPhotos].map((photo) => photo.id)).size,
+      photoManifest: inspectionPhotos,
       note: "This data ZIP includes app-data.json plus a mileage-log.csv spreadsheet. It contains mileage data, inspection records, GPS data, settings, and photo filenames and descriptions. Actual image files are not included; retain the originals in iPhone Photos. The privately imported STA master is also excluded.",
       appState: state
     };
@@ -1586,7 +1614,7 @@
         completedTrips: state.trips.length,
         activeTrips: state.activeTrip ? 1 : 0,
         inspections: Array.isArray(state.settings?.inspections) ? state.settings.inspections.length : 0,
-        photoReferences: inspectionPhotoMetadata().length
+        photoReferences: photoReferenceCount()
       }
     );
   }
