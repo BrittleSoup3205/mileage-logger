@@ -1,9 +1,9 @@
 (() => {
   "use strict";
 
-  const STORAGE_KEY = "mileage_logger_pr17_state_v3";
-  const OLD_STORAGE_KEYS = [];
-  const STA_DB_NAME = "MileageLoggerPr17PrivateFiles";
+  const STORAGE_KEY = "mileage_logger_state_v3";
+  const OLD_STORAGE_KEYS = ["mileage_logger_state_v2", "mileage_logger_state_v1"];
+  const STA_DB_NAME = "MileageLoggerPrivateFiles";
   const STA_DB_VERSION = 1;
   const STA_DB_STORE = "privateFiles";
   const STA_MASTER_KEY = "staMaster";
@@ -1573,6 +1573,10 @@
   }
 
   function buildBackupPackage() {
+    // Inspection records are maintained by inspections.js in the same local
+    // state object. Reload here so a backup can never serialize an older
+    // in-memory snapshot after an inspection save.
+    state = loadState();
     ensureBackupState();
     const inspectionPhotos = inspectionPhotoMetadata();
     const tripPhotos = tripPhotoMetadata();
@@ -2907,10 +2911,13 @@
     renderAll();
   });
 
-  window.addEventListener("storage", () => {
+  function reloadStateFromStorage() {
     state = loadState();
     renderAll();
-  });
+  }
+
+  window.addEventListener("storage", reloadStateFromStorage);
+  window.addEventListener("mileage:state-changed", reloadStateFromStorage);
 
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && state.activeTrip?.trackRoute && routeWatchId === null) {
