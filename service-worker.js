@@ -1,12 +1,12 @@
-const CACHE_NAME = "mileage-logger-visit-workspace-v48";
+const CACHE_NAME = "mileage-logger-visit-workspace-v49";
 const APP_FILES = [
   "./",
-  "./index.html?v=visit-workspace-4",
-  "./styles.css?v=visit-workspace-4",
-  "./app.js?v=visit-workspace-4",
-  "./inspections.js?v=visit-workspace-4",
-  "./media-store.js?v=visit-workspace-4",
-  "./active-jobs-data.js?v=visit-workspace-4",
+  "./index.html?v=visit-workspace-5",
+  "./styles.css?v=visit-workspace-5",
+  "./app.js?v=visit-workspace-5",
+  "./inspections.js?v=visit-workspace-5",
+  "./media-store.js?v=visit-workspace-5",
+  "./active-jobs-data.js?v=visit-workspace-5",
   "./vendor/pdf-lib.min.js",
   "./vendor/fflate.min.js",
   "./manifest.webmanifest",

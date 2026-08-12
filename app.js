@@ -1573,6 +1573,10 @@
   }
 
   function buildBackupPackage() {
+    // Inspection records are maintained by inspections.js in the same local
+    // state object. Reload here so a backup can never serialize an older
+    // in-memory snapshot after an inspection save.
+    state = loadState();
     ensureBackupState();
     const inspectionPhotos = inspectionPhotoMetadata();
     const tripPhotos = tripPhotoMetadata();
@@ -2907,10 +2911,13 @@
     renderAll();
   });
 
-  window.addEventListener("storage", () => {
+  function reloadStateFromStorage() {
     state = loadState();
     renderAll();
-  });
+  }
+
+  window.addEventListener("storage", reloadStateFromStorage);
+  window.addEventListener("mileage:state-changed", reloadStateFromStorage);
 
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && state.activeTrip?.trackRoute && routeWatchId === null) {

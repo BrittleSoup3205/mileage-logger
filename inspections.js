@@ -292,8 +292,10 @@
     state.settings.inspectionSchemaVersion = INSPECTION_SCHEMA_VERSION;
     nativeSetItem(STATE_KEY, JSON.stringify(state));
 
-    // The main mileage app listens for this event and reloads its in-memory state.
-    window.dispatchEvent(new Event("storage"));
+    // A same-page localStorage write does not produce a native storage event.
+    // Notify the main mileage app explicitly so its backup view and package
+    // always include the latest inspection records and photo references.
+    window.dispatchEvent(new CustomEvent("mileage:state-changed"));
     lastStateSignature = "";
     refreshFromState(true);
   }

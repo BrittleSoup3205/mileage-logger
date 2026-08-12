@@ -17,6 +17,8 @@ assert.match(app, /function tripPhotoMetadata\(\)/);
 assert.match(app, /function photoReferenceCount\(\)/);
 assert.match(app, /tripPhotoCount: tripPhotos\.length/);
 assert.match(app, /photoReferences: photoReferenceCount\(\)/);
+assert.match(app, /window\.addEventListener\("mileage:state-changed", reloadStateFromStorage\)/);
+assert.match(app, /function buildBackupPackage\(\) \{\s*\/\/[^]*?state = loadState\(\);/);
 assert.match(mediaStore, /async function updatePhotoCaption/);
 
 assert.match(inspections, /id="activeJobsVisit"/);
@@ -37,5 +39,6 @@ assert.doesNotMatch(inspections, /inheritedTripPhotos/);
 assert.doesNotMatch(inspections, /recoverLinkedTripPhotos/);
 assert.match(inspections, /Trip-level photos stay with the visit/);
 assert.match(inspections, /\(inspection\.tripId \|\| ""\) === tripId/);
+assert.match(inspections, /window\.dispatchEvent\(new CustomEvent\("mileage:state-changed"\)\)/);
 
 console.log("Visit workspace and separate photo-ownership checks passed.");
