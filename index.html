@@ -63,9 +63,22 @@
 
       <p class="privacy-note compact-note">
         <strong>Export Active Jobs Activity</strong> prepares <strong>Mileage_Logger_Activity.csv</strong> and opens the iPhone Share sheet.
-        Choose <strong>Save to Files</strong>, select <strong>OneDrive &gt; 1Mileage Logger</strong>, and replace the existing CSV.
+        In the Share sheet, scroll to <strong>Save to Files</strong>—do not tap the OneDrive app icon—then select
+        <strong>OneDrive &gt; 1Mileage Logger</strong>, tap <strong>Save</strong>, and tap <strong>Replace</strong>.
         A browser download is used only when the Share sheet is unavailable. This activity feed does not determine inspection or project status.
       </p>
+
+      <section id="activeJobsReadyPanel" class="backup-ready-panel hidden" aria-labelledby="activeJobsReadyTitle">
+        <p class="eyebrow">Activity CSV prepared</p>
+        <h3 id="activeJobsReadyTitle">Save Through the iPhone Files Picker</h3>
+        <div id="activeJobsReadySummary" class="backup-ready-summary"></div>
+        <p id="activeJobsReadyStatus" class="gps-status good"></p>
+        <div class="form-actions wrap">
+          <button id="sharePreparedActiveJobsBtn" class="button button-backup" type="button">Open Share / Save to Files</button>
+          <button id="downloadPreparedActiveJobsBtn" class="button button-secondary" type="button">Download CSV Instead</button>
+          <button id="closePreparedActiveJobsBtn" class="button button-quiet" type="button">Close</button>
+        </div>
+      </section>
 
       <section id="backupReadyPanel" class="backup-ready-panel hidden" aria-labelledby="backupReadyTitle">
         <p class="eyebrow">Backup prepared</p>
@@ -554,7 +567,7 @@
   <script src="./vendor/fflate.min.js"></script>
   <script src="./media-store.js?v=visit-workspace-5"></script>
   <script src="./active-jobs-data.js?v=visit-workspace-5"></script>
-  <script src="./app.js?v=active-jobs-share-1"></script>
+  <script src="./app.js?v=active-jobs-save-2"></script>
   <script src="./inspections.js?v=visit-workspace-5"></script>
 </body>
 </html>

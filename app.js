@@ -56,6 +56,7 @@
   let tripLogPhotoObjectUrls = [];
   let tripPhotoCaptionSaveTimer = null;
   let preparedBackupSession = null;
+  let preparedActiveJobsActivity = null;
 
   function defaultState() {
     return {
@@ -1552,6 +1553,69 @@
     showToast("CSV export created.");
   }
 
+  function canSharePreparedFile(file) {
+    if (!file || !navigator.share) return false;
+    try {
+      return !navigator.canShare || navigator.canShare({ files: [file] });
+    } catch (error) {
+      console.warn("File sharing availability could not be checked:", error);
+      return false;
+    }
+  }
+
+  function showPreparedActiveJobsActivity(prepared) {
+    preparedActiveJobsActivity = prepared;
+    $("activeJobsReadySummary").innerHTML = `
+      <strong>${escapeHTML(prepared.filename)}</strong>
+      <span>All applicable saved visits are included.</span>
+      <span>Destination: OneDrive &gt; 1Mileage Logger</span>
+    `;
+    $("activeJobsReadyStatus").textContent =
+      "In the iPhone Share sheet, scroll to Save to Files (do not tap the OneDrive app icon). Then choose OneDrive > 1Mileage Logger, tap Save, and tap Replace.";
+    $("activeJobsReadyStatus").className = "gps-status good";
+    $("sharePreparedActiveJobsBtn").textContent = "Open Share / Save to Files";
+    $("activeJobsReadyPanel").classList.remove("hidden");
+    $("activeJobsReadyPanel").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  async function sharePreparedActiveJobsActivity() {
+    if (!preparedActiveJobsActivity) return;
+    const { filename, file } = preparedActiveJobsActivity;
+    const status = $("activeJobsReadyStatus");
+
+    if (!canSharePreparedFile(file)) {
+      status.textContent =
+        "This browser cannot open the file Share sheet. Use Download CSV Instead, then move the downloaded file to OneDrive > 1Mileage Logger.";
+      status.className = "gps-status warn";
+      return;
+    }
+
+    $("sharePreparedActiveJobsBtn").disabled = true;
+    try {
+      // Share only the CSV file. A separate text payload can create an
+      // unwanted .txt file on iOS and does not help choose a Files folder.
+      await navigator.share({ title: filename, files: [file] });
+      status.textContent =
+        "The Share sheet finished, but iPhone does not tell this app where the file was placed. Open Files > Browse > OneDrive > 1Mileage Logger and verify Mileage_Logger_Activity.csv is there. If it is missing, tap Save Again and choose Save to Files—not the OneDrive app icon—then tap Replace.";
+      status.className = "gps-status warn";
+      $("sharePreparedActiveJobsBtn").textContent = "Save Again";
+      showToast("Verify the CSV in Files > OneDrive > 1Mileage Logger.");
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        status.textContent =
+          "The Share sheet was closed, so the destination was not confirmed. Tap Open Share / Save to Files when you are ready to try again.";
+        status.className = "gps-status warn";
+        return;
+      }
+      console.warn("Active Jobs CSV share unavailable:", error);
+      status.textContent =
+        "The Share sheet could not be used. Tap Download CSV Instead, then move the file to OneDrive > 1Mileage Logger.";
+      status.className = "gps-status warn";
+    } finally {
+      $("sharePreparedActiveJobsBtn").disabled = false;
+    }
+  }
+
   async function exportActiveJobsActivityCSV() {
     const inspections = Array.isArray(state.settings?.inspections) ? state.settings.inspections : [];
     if (state.trips.length === 0 && inspections.length === 0) {
@@ -1561,38 +1625,19 @@
 
     const filename = "Mileage_Logger_Activity.csv";
     const type = "text/csv";
-    const blob = new Blob([makeActiveJobsActivityCSV()], { type });
-    let file = null;
-    let canShareFile = false;
+    let blob;
+    let file;
     try {
+      blob = new Blob([makeActiveJobsActivityCSV()], { type });
       file = new File([blob], filename, { type });
-      canShareFile = Boolean(
-        navigator.share &&
-        (!navigator.canShare || navigator.canShare({ files: [file] }))
-      );
     } catch (error) {
-      console.warn("Active Jobs CSV file sharing is unavailable:", error);
+      console.error("Active Jobs CSV preparation failed:", error);
+      window.alert(`Mileage_Logger_Activity.csv could not be prepared.\n\n${error.message}`);
+      return;
     }
 
-    if (canShareFile) {
-      showToast("CSV prepared. Choose Save to Files, then OneDrive > 1Mileage Logger, and replace the existing CSV.");
-      try {
-        await navigator.share({ files: [file] });
-        showToast("Active Jobs activity CSV shared. Replace the existing file in OneDrive > 1Mileage Logger.");
-        return;
-      } catch (error) {
-        if (error?.name === "AbortError") {
-          showToast("The share sheet was closed. The Active Jobs CSV was not saved.");
-          return;
-        }
-        console.warn("Active Jobs CSV share unavailable; using download instead:", error);
-      }
-    }
-
-    downloadFile(filename, blob, type);
-    window.alert(
-      "The iPhone share sheet could not be used, so Mileage_Logger_Activity.csv was downloaded instead.\n\nMove it to OneDrive > 1Mileage Logger and replace the existing CSV."
-    );
+    showPreparedActiveJobsActivity({ filename, type, blob, file });
+    await sharePreparedActiveJobsActivity();
   }
 
   function backupTimestamp() {
@@ -2677,6 +2722,19 @@
   $("backupNowBtn").addEventListener("click", backupData);
   $("backupCsvBtn").addEventListener("click", exportCSV);
   $("activeJobsCsvBtn").addEventListener("click", exportActiveJobsActivityCSV);
+  $("sharePreparedActiveJobsBtn").addEventListener("click", sharePreparedActiveJobsActivity);
+  $("downloadPreparedActiveJobsBtn").addEventListener("click", () => {
+    if (!preparedActiveJobsActivity) return;
+    const { filename, blob, type } = preparedActiveJobsActivity;
+    downloadFile(filename, blob, type);
+    $("activeJobsReadyStatus").textContent =
+      "The CSV was downloaded to the browser's Downloads location; it was not placed in OneDrive automatically. Move it to OneDrive > 1Mileage Logger and replace the existing CSV.";
+    $("activeJobsReadyStatus").className = "gps-status warn";
+  });
+  $("closePreparedActiveJobsBtn").addEventListener("click", () => {
+    preparedActiveJobsActivity = null;
+    $("activeJobsReadyPanel").classList.add("hidden");
+  });
   $("restoreBackupBtn").addEventListener("click", () => $("importFile").click());
   $("sharePreparedBackupBtn").addEventListener("click", async () => {
     if (!preparedBackupSession) return;
