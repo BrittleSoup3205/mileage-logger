@@ -1,11 +1,12 @@
-const CACHE_NAME = "mileage-logger-active-jobs-export-v41";
+const CACHE_NAME = "mileage-logger-visit-workspace-v49";
 const APP_FILES = [
   "./",
-  "./index.html?v=active-jobs-export-1",
-  "./styles.css?v=active-jobs-export-1",
-  "./app.js?v=active-jobs-export-1",
-  "./inspections.js?v=backup-csv-only-share-1",
-  "./media-store.js?v=backup-csv-only-share-1",
+  "./index.html?v=visit-workspace-5",
+  "./styles.css?v=visit-workspace-5",
+  "./app.js?v=visit-workspace-5",
+  "./inspections.js?v=visit-workspace-5",
+  "./media-store.js?v=visit-workspace-5",
+  "./active-jobs-data.js?v=visit-workspace-5",
   "./vendor/pdf-lib.min.js",
   "./vendor/fflate.min.js",
   "./manifest.webmanifest",

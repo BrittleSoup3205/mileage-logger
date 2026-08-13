@@ -814,6 +814,18 @@ hr {
   background: color-mix(in srgb, var(--info), transparent 96%);
 }
 
+.trip-edit-photo-section {
+  margin: 16px 0;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--card), var(--bg) 30%);
+}
+
+.trip-edit-photo-section .active-trip-photo-heading p {
+  margin: 5px 0 0;
+}
+
 .trip-row-actions {
   display: flex;
   flex-wrap: wrap;
