@@ -1552,18 +1552,47 @@
     showToast("CSV export created.");
   }
 
-  function exportActiveJobsActivityCSV() {
+  async function exportActiveJobsActivityCSV() {
     const inspections = Array.isArray(state.settings?.inspections) ? state.settings.inspections : [];
     if (state.trips.length === 0 && inspections.length === 0) {
       showToast("There are no visits to export for Active Jobs.");
       return;
     }
-    downloadFile(
-      "Mileage_Logger_Activity.csv",
-      makeActiveJobsActivityCSV(),
-      "text/csv;charset=utf-8"
+
+    const filename = "Mileage_Logger_Activity.csv";
+    const type = "text/csv";
+    const blob = new Blob([makeActiveJobsActivityCSV()], { type });
+    let file = null;
+    let canShareFile = false;
+    try {
+      file = new File([blob], filename, { type });
+      canShareFile = Boolean(
+        navigator.share &&
+        (!navigator.canShare || navigator.canShare({ files: [file] }))
+      );
+    } catch (error) {
+      console.warn("Active Jobs CSV file sharing is unavailable:", error);
+    }
+
+    if (canShareFile) {
+      showToast("CSV prepared. Choose Save to Files, then OneDrive > 1Mileage Logger, and replace the existing CSV.");
+      try {
+        await navigator.share({ files: [file] });
+        showToast("Active Jobs activity CSV shared. Replace the existing file in OneDrive > 1Mileage Logger.");
+        return;
+      } catch (error) {
+        if (error?.name === "AbortError") {
+          showToast("The share sheet was closed. The Active Jobs CSV was not saved.");
+          return;
+        }
+        console.warn("Active Jobs CSV share unavailable; using download instead:", error);
+      }
+    }
+
+    downloadFile(filename, blob, type);
+    window.alert(
+      "The iPhone share sheet could not be used, so Mileage_Logger_Activity.csv was downloaded instead.\n\nMove it to OneDrive > 1Mileage Logger and replace the existing CSV."
     );
-    showToast("Active Jobs activity export created. Save it in the Mileage Logger OneDrive folder.");
   }
 
   function backupTimestamp() {
