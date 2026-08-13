@@ -1,9 +1,9 @@
-const CACHE_NAME = "mileage-logger-visit-workspace-v49";
+const CACHE_NAME = "mileage-logger-active-jobs-share-v50";
 const APP_FILES = [
   "./",
-  "./index.html?v=visit-workspace-5",
+  "./index.html?v=active-jobs-share-1",
   "./styles.css?v=visit-workspace-5",
-  "./app.js?v=visit-workspace-5",
+  "./app.js?v=active-jobs-share-1",
   "./inspections.js?v=visit-workspace-5",
   "./media-store.js?v=visit-workspace-5",
   "./active-jobs-data.js?v=visit-workspace-5",
@@ -47,4 +47,3 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
-
