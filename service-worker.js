@@ -1,9 +1,9 @@
-const CACHE_NAME = "mileage-logger-active-jobs-share-v50";
+const CACHE_NAME = "mileage-logger-active-jobs-save-v51";
 const APP_FILES = [
   "./",
-  "./index.html?v=active-jobs-share-1",
+  "./index.html?v=active-jobs-save-2",
   "./styles.css?v=visit-workspace-5",
-  "./app.js?v=active-jobs-share-1",
+  "./app.js?v=active-jobs-save-2",
   "./inspections.js?v=visit-workspace-5",
   "./media-store.js?v=visit-workspace-5",
   "./active-jobs-data.js?v=visit-workspace-5",
