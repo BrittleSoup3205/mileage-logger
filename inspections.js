@@ -403,13 +403,28 @@
 
   function getTripById(state, tripId) {
     if (!tripId) return null;
+    if (state.activeTrip?.id === tripId) return state.activeTrip;
     return state.trips.find((trip) => trip.id === tripId) || null;
+  }
+
+  function isActiveTrip(state, trip) {
+    return Boolean(trip?.id && state.activeTrip?.id === trip.id);
+  }
+
+  function inspectionTrips(state) {
+    const trips = [...state.trips];
+    if (state.activeTrip?.id && !trips.some((trip) => trip.id === state.activeTrip.id)) {
+      trips.unshift(state.activeTrip);
+    }
+    return trips;
   }
 
   function tripSnapshot(trip) {
     if (!trip) return null;
+    const inProgress = !trip.endISO && !trip.endTime && (trip.endOdometer === undefined || trip.endOdometer === "");
     return {
       tripId: trip.id,
+      inProgress,
       date: trip.date || "",
       startTime: trip.startTime || "",
       endTime: trip.endTime || "",
@@ -483,6 +498,7 @@
     style.id = "inspectionDatabaseStyles";
     style.textContent = `
       .inspection-prompt-card { border: 2px solid var(--info); }
+      .inspection-prompt-card.current-trip-secondary { border-width: 1px; border-color: var(--line); background: color-mix(in srgb, var(--card), var(--bg) 24%); }
       .inspection-prompt-card .inspection-prompt-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
       .inspection-button { color: #ffffff; background: #1d4ed8; }
       body.dark .inspection-button { color: #0b1220; background: #93c5fd; }
@@ -786,7 +802,7 @@
 
   function workspaceTripsForVendor(state, vendor) {
     if (!vendor) return [];
-    return [...state.trips]
+    return inspectionTrips(state)
       .filter((trip) => {
         if (sameLocation(trip.vendor, vendor)) return true;
         return state.settings.inspections.some((inspection) => (
@@ -795,7 +811,7 @@
             || sameLocation(inspection.reportingVendor, vendor))
         ));
       })
-      .sort((a, b) => String(b.endISO || b.date || "").localeCompare(String(a.endISO || a.date || "")));
+      .sort((a, b) => String(b.endISO || b.startISO || b.date || "").localeCompare(String(a.endISO || a.startISO || a.date || "")));
   }
 
   async function renderWorkspacePhotos(trip, inspections) {
@@ -852,7 +868,7 @@
     ACTIVE_JOBS.filter((job) => job.openClosed === "Open").forEach((job) => {
       activeJobLocations(state, job).forEach((location) => vendors.add(location));
     });
-    state.trips.forEach((trip) => {
+    inspectionTrips(state).forEach((trip) => {
       if (trip.vendor) vendors.add(trip.vendor);
     });
     const savedTrip = getTripById(state, state.settings.activeJobsWorkspaceTripId);
@@ -867,7 +883,14 @@
         ? state.settings.activeJobsWorkspaceTripId
         : (visits[0]?.id || ""));
     const selectedTrip = getTripById(state, selectedTripId);
-    visitSelect.innerHTML = `<option value=""${standaloneSelected ? " selected" : ""}>Standalone / no mileage trip</option>${visits.map((trip) => `<option value="${escapeHTML(trip.id)}"${trip.id === selectedTripId ? " selected" : ""}>${escapeHTML(trip.date || "Saved visit")} — ${escapeHTML(trip.purpose || "Visit")} — ${escapeHTML(formatMiles(trip.miles))}</option>`).join("")}`;
+    const selectedTripIsActive = isActiveTrip(state, selectedTrip);
+    visitSelect.innerHTML = `<option value=""${standaloneSelected ? " selected" : ""}>Standalone / no mileage trip</option>${visits.map((trip) => {
+      const active = isActiveTrip(state, trip);
+      const label = active
+        ? `ACTIVE TRIP — ${trip.date || "Today"} — ${trip.purpose || "Visit"} — in progress`
+        : `${trip.date || "Saved visit"} — ${trip.purpose || "Visit"} — ${formatMiles(trip.miles)}`;
+      return `<option value="${escapeHTML(trip.id)}"${trip.id === selectedTripId ? " selected" : ""}>${escapeHTML(label)}</option>`;
+    }).join("")}`;
 
     const linkedInspections = state.settings.inspections
       .filter((inspection) => selectedTrip
@@ -882,20 +905,20 @@
     context.innerHTML = `
       <span class="eyebrow">Current context</span>
       <strong>${selectedTrip ? `${escapeHTML(selectedTrip.vendor || "Vendor visit")} — ${escapeHTML(selectedTrip.date || "Saved visit")}` : (selectedVendor ? `${escapeHTML(selectedVendor)} — standalone work` : "Choose a vendor and visit")}</strong>
-      <small>${contextJob ? `${escapeHTML(contextJob.aj)} — ${escapeHTML(contextJob.projectName)}` : "No Active Job selected"}${selectedTrip ? ` • Mileage counted once: ${escapeHTML(formatMiles(selectedTrip.miles))}` : " • No trip mileage attached"}</small>`;
+      <small>${contextJob ? `${escapeHTML(contextJob.aj)} — ${escapeHTML(contextJob.projectName)}` : "No Active Job selected"}${selectedTrip ? (selectedTripIsActive ? " • Active trip in progress — mileage finalizes at End Trip" : ` • Mileage counted once: ${escapeHTML(formatMiles(selectedTrip.miles))}`) : " • No trip mileage attached"}</small>`;
 
     if (selectedTrip) {
       const startMap = mapLink(selectedTrip.startLocation, "Trip Start");
       const endMap = mapLink(selectedTrip.endLocation, "Trip End");
       summary.innerHTML = `
         <div class="visit-summary-grid">
-          <div><span>Date / time</span><strong>${escapeHTML(selectedTrip.date || "—")}<br>${escapeHTML(selectedTrip.startTime || "—")}–${escapeHTML(selectedTrip.endTime || "—")}</strong></div>
-          <div><span>Mileage</span><strong>${escapeHTML(formatMiles(selectedTrip.miles))}</strong><small>Counted once for this visit</small></div>
+          <div><span>Date / time</span><strong>${escapeHTML(selectedTrip.date || "—")}<br>${escapeHTML(selectedTrip.startTime || "—")}–${selectedTripIsActive ? "In progress" : escapeHTML(selectedTrip.endTime || "—")}</strong></div>
+          <div><span>Mileage</span><strong>${selectedTripIsActive ? "In progress" : escapeHTML(formatMiles(selectedTrip.miles))}</strong><small>${selectedTripIsActive ? "Finalizes when End Trip is saved" : "Counted once for this visit"}</small></div>
           <div><span>Client / project</span><strong>${escapeHTML(selectedTrip.customer || "—")}<br>${escapeHTML(selectedTrip.projectNumber || "—")}</strong></div>
           <div><span>Purpose</span><strong>${escapeHTML(selectedTrip.purpose || "—")}</strong></div>
         </div>
         <div class="form-actions wrap">
-          <button class="button button-secondary button-small" type="button" data-edit-workspace-trip="${escapeHTML(selectedTrip.id)}">Edit Trip &amp; Photos</button>
+          ${selectedTripIsActive ? `<span class="pill active">ACTIVE TRIP — INSPECTION WORK AVAILABLE</span>` : `<button class="button button-secondary button-small" type="button" data-edit-workspace-trip="${escapeHTML(selectedTrip.id)}">Edit Trip &amp; Photos</button>`}
           ${startMap ? `<a class="button button-secondary button-small" href="${startMap}" target="_blank" rel="noopener">Start Map</a>` : ""}
           ${endMap ? `<a class="button button-secondary button-small" href="${endMap}" target="_blank" rel="noopener">End Map</a>` : ""}
         </div>`;
@@ -932,9 +955,12 @@
       conflict.textContent = "";
     }
 
-    const jobs = ACTIVE_JOBS
-      .filter((job) => job.openClosed === "Open")
-      .filter((job) => selectedVendor && activeJobLocations(state, job).has(selectedVendor));
+    const openJobs = ACTIVE_JOBS.filter((job) => job.openClosed === "Open");
+    const matchedJobs = openJobs.filter((job) => selectedVendor && (
+      activeJobLocations(state, job).has(selectedVendor)
+      || (selectedTrip?.projectNumber && sameLocation(job.inspectionNo, selectedTrip.projectNumber))
+    ));
+    const jobs = matchedJobs.length || !selectedTripIsActive ? matchedJobs : openJobs;
     cards.innerHTML = jobs.length ? jobs.map((job) => {
       const current = job.aj === contextJob?.aj;
       const visitRecords = linkedInspections.filter((inspection) => inspection.activeJobId === job.aj);
@@ -991,6 +1017,25 @@
     closeInspectionForm();
   }
 
+  function renderActiveTripInspectionAction(state) {
+    const details = $("activeDetails");
+    if (!details) return;
+    const existing = $("workCurrentInspectionBtn");
+    if (!state.activeTrip) {
+      existing?.remove();
+      return;
+    }
+    const controls = details.querySelector(".active-controls");
+    if (!controls || existing) return;
+    const button = document.createElement("button");
+    button.id = "workCurrentInspectionBtn";
+    button.className = "button inspection-button button-small";
+    button.type = "button";
+    button.textContent = "Work Current Inspection";
+    button.title = "Open this active mileage trip as the current inspection visit without ending the trip.";
+    controls.insertAdjacentElement("afterbegin", button);
+  }
+
   function renderPrompt(state) {
     const card = $("inspectionPromptCard");
     if (!card) return;
@@ -1010,16 +1055,18 @@
       return;
     }
 
+    const currentTripActive = Boolean(state.activeTrip);
+    card.classList.toggle("current-trip-secondary", currentTripActive);
     card.innerHTML = `
-      <p class="eyebrow">Completed trip ready</p>
-      <h2>Create an inspection record?</h2>
+      <p class="eyebrow">${currentTripActive ? "Past trip needs review" : "Completed trip ready"}</p>
+      <h2>${currentTripActive ? "Review the earlier trip when ready" : "Create an inspection record?"}</h2>
       <p>
         <strong>${escapeHTML(candidate.vendor || "Destination")}</strong>
         ${candidate.projectNumber ? `• ${escapeHTML(candidate.projectNumber)}` : ""}<br>
         ${escapeHTML(candidate.date || "")}${candidate.miles !== undefined ? ` • ${formatMiles(candidate.miles)}` : ""}
       </p>
       <div class="inspection-prompt-actions">
-        <button class="button inspection-button" type="button" data-create-inspection-trip="${escapeHTML(candidate.id)}">Create Inspection Record</button>
+        <button class="button ${currentTripActive ? "button-secondary" : "inspection-button"}" type="button" data-create-inspection-trip="${escapeHTML(candidate.id)}">${currentTripActive ? "Review Past Trip" : "Create Inspection Record"}</button>
         <button class="button button-secondary" type="button" data-ignore-inspection-trip="${escapeHTML(candidate.id)}">Not an Inspection</button>
       </div>
     `;
@@ -1051,11 +1098,14 @@
   }
 
   function renderTripOptions(state, selectedTripId) {
-    const sortedTrips = [...state.trips].sort((a, b) => String(b.endISO || "").localeCompare(String(a.endISO || "")));
+    const sortedTrips = inspectionTrips(state).sort((a, b) => String(b.endISO || b.startISO || "").localeCompare(String(a.endISO || a.startISO || "")));
     return [
       `<option value="">Standalone inspection — no mileage trip</option>`,
       ...sortedTrips.map((trip) => {
-        const label = [trip.date, trip.vendor, trip.projectNumber, formatMiles(trip.miles)].filter(Boolean).join(" • ");
+        const active = isActiveTrip(state, trip);
+        const label = active
+          ? ["ACTIVE TRIP", trip.date, trip.vendor, trip.projectNumber, "in progress"].filter(Boolean).join(" • ")
+          : [trip.date, trip.vendor, trip.projectNumber, formatMiles(trip.miles)].filter(Boolean).join(" • ");
         return `<option value="${escapeHTML(trip.id)}"${trip.id === selectedTripId ? " selected" : ""}>${escapeHTML(label)}</option>`;
       })
     ].join("");
@@ -1678,9 +1728,9 @@
     const startMap = mapLink(snapshot.startLocation, "Trip Start");
     const endMap = mapLink(snapshot.endLocation, "Trip End");
     box.innerHTML = `
-      <strong>Linked mileage: ${formatMiles(snapshot.miles)}</strong>
+      <strong>${snapshot.inProgress ? "Active trip linked — mileage still in progress" : `Linked mileage: ${formatMiles(snapshot.miles)}`}</strong>
       ${snapshot.gpsRouteMiles ? ` • GPS ${formatMiles(snapshot.gpsRouteMiles)}` : ""}<br>
-      <small>${escapeHTML(snapshot.date || "")} ${escapeHTML(snapshot.startTime || "")}–${escapeHTML(snapshot.endTime || "")}
+      <small>${escapeHTML(snapshot.date || "")} ${escapeHTML(snapshot.startTime || "")}–${snapshot.inProgress ? "In progress" : escapeHTML(snapshot.endTime || "")}
       ${snapshot.staGenerated ? ` • STA ${escapeHTML(snapshot.staFileName || "generated")}` : ""}</small>
       ${(startMap || endMap) ? `<div class="map-links">${startMap ? `<a href="${startMap}" target="_blank" rel="noopener">Start map</a>` : ""}${endMap ? `<a href="${endMap}" target="_blank" rel="noopener">End map</a>` : ""}</div>` : ""}
     `;
@@ -2010,7 +2060,7 @@
             <span><strong>Active Job:</strong> ${escapeHTML(inspection.activeJobId || "Unassigned")}</span>
             <span><strong>Acceptance:</strong> ${escapeHTML(inspection.acceptanceStatus || "Not Determined")}</span>
             <span><strong>Hours:</strong> ${escapeHTML(inspection.hoursOnSite || "—")}</span>
-            <span><strong>Mileage:</strong> ${snapshot ? formatMiles(snapshot.miles) : "Standalone"}</span>
+            <span><strong>Mileage:</strong> ${snapshot ? (snapshot.inProgress ? "In progress" : formatMiles(snapshot.miles)) : "Standalone"}</span>
             <span><strong>Open actions:</strong> ${openCount}</span>
             <span><strong>Photos:</strong> ${photos.length}</span>
             <span><strong>Vendor loads:</strong> ${loads.length ? escapeHTML(loads.map((load) => load.identifier).filter(Boolean).join(" | ")) : "—"}</span>
@@ -3371,7 +3421,9 @@
   function refreshFromState(force = false) {
     if (!$('inspectionSection')) return;
     const state = readState();
+    renderActiveTripInspectionAction(state);
     const signature = JSON.stringify({
+      activeTrip: state.activeTrip ? [state.activeTrip.id, state.activeTrip.startISO, state.activeTrip.vendor, state.activeTrip.projectNumber, state.activeTrip.purpose, state.activeTrip.notes, (state.activeTrip.photos || []).map((photo) => [photo.id, photo.caption])] : null,
       trips: state.trips.map((trip) => [trip.id, trip.endISO, trip.miles, trip.notes, (trip.photos || []).map((photo) => [photo.id, photo.caption])]),
       inspections: state.settings.inspections.map((inspection) => [inspection.id, inspection.modifiedISO]),
       ignored: state.settings.inspectionIgnoredTripIds,
@@ -3435,6 +3487,20 @@
     });
 
     document.addEventListener("click", async (event) => {
+      if (event.target.closest("#workCurrentInspectionBtn")) {
+        const state = readState();
+        const trip = state.activeTrip;
+        if (!trip) {
+          window.alert("There is no active trip to inspect right now.");
+          return;
+        }
+        state.settings.activeJobsWorkspaceTripId = trip.id;
+        state.settings.activeJobsWorkspaceVendor = trip.vendor || state.settings.activeJobsWorkspaceVendor || "";
+        writeState(state);
+        showInspectionSection(false, trip.id);
+        return;
+      }
+
       const activeJobButton = event.target.closest("[data-work-active-job]");
       if (activeJobButton) {
         switchActiveJob(activeJobButton.dataset.workActiveJob);
@@ -3749,9 +3815,27 @@
     });
 
     window.addEventListener("storage", () => refreshFromState(true));
+    window.addEventListener("mileage:trip-finalized", (event) => {
+      finalizeLinkedTrip(event.detail?.tripId || "");
+    });
     window.addEventListener("mileage:trip-completed", (event) => {
       promptForCompletedTrip(event.detail?.tripId || "", event.detail?.backupConfirmed);
     });
+  }
+
+  function finalizeLinkedTrip(tripId) {
+    if (!tripId) return 0;
+    const state = readState();
+    const trip = state.trips.find((item) => item.id === tripId);
+    if (!trip) return 0;
+    const linked = state.settings.inspections.filter((inspection) => inspection.tripId === tripId);
+    if (!linked.length) return 0;
+    const snapshot = tripSnapshot(trip);
+    linked.forEach((inspection) => {
+      inspection.tripSnapshot = { ...snapshot };
+    });
+    writeState(state);
+    return linked.length;
   }
 
   function promptForCompletedTrip(tripId, backupConfirmed) {
@@ -3762,6 +3846,11 @@
       const state = readState();
       const trip = getTripById(state, tripId);
       if (!trip) return;
+      const linked = state.settings.inspections.filter((inspection) => inspection.tripId === tripId);
+      if (linked.length) {
+        showInspectionToast(`Trip finalized and linked to ${linked.length} inspection record${linked.length === 1 ? "" : "s"}.`);
+        return;
+      }
 
       const createInspection = window.confirm(
         `Trip saved and backed up.\n\nCreate an inspection record for ${trip.vendor || "this trip"}?`

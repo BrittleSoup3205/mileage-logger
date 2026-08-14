@@ -1,4 +1,4 @@
-const CACHE_NAME = "mileage-logger-workflow-upgrades-v53";
+const CACHE_NAME = "mileage-logger-active-trip-inspection-v54";
 const APP_FILES = [
   "./",
   "./index.html?v=workflow-upgrades-2",
