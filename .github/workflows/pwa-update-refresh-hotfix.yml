@@ -15,110 +15,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: agent/pwa-update-refresh-hotfix
-
       - name: Patch files
-        run: |
-          python3 <<'PY'
-          from pathlib import Path
-
-          index = Path('index.html')
-          text = index.read_text(encoding='utf-8')
-          text = text.replace('workflow-upgrades-2', 'active-trip-inspection-v55')
-          index.write_text(text, encoding='utf-8')
-
-          app = Path('app.js')
-          text = app.read_text(encoding='utf-8')
-          old = 'navigator.serviceWorker.register("./service-worker.js").catch((error) => {'
-          new = '''navigator.serviceWorker.addEventListener("controllerchange", () => {
-        const reloadKey = "mileage_logger_sw_controller_reloaded";
-        if (sessionStorage.getItem(reloadKey)) return;
-        sessionStorage.setItem(reloadKey, "1");
-        window.location.reload();
-      });
-      navigator.serviceWorker.register("./service-worker.js", { updateViaCache: "none" })
-        .then((registration) => registration.update())
-        .catch((error) => {'''
-          if old not in text:
-              raise SystemExit('service worker registration pattern not found')
-          text = text.replace(old, new, 1)
-          app.write_text(text, encoding='utf-8')
-
-          sw = Path('service-worker.js')
-          text = sw.read_text(encoding='utf-8')
-          text = text.replace('mileage-logger-active-trip-inspection-v54', 'mileage-logger-active-trip-inspection-v55')
-          text = text.replace('workflow-upgrades-2', 'active-trip-inspection-v55')
-          old_install = '''self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(APP_FILES))
-      .then(() => self.skipWaiting())
-  );
-});'''
-          new_install = '''self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => Promise.all(APP_FILES.map(async (url) => {
-        const response = await fetch(url, { cache: "reload" });
-        if (!response.ok) throw new Error(`Could not refresh ${url}: ${response.status}`);
-        await cache.put(url, response);
-      })))
-      .then(() => self.skipWaiting())
-  );
-});'''
-          if old_install not in text:
-              raise SystemExit('install handler pattern not found')
-          text = text.replace(old_install, new_install, 1)
-
-          old_fetch = '''self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") return;
-
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
-
-      return fetch(event.request).then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-        return response;
-      }).catch(() => caches.match("./index.html"));
-    })
-  );
-});'''
-          new_fetch = '''self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET") return;
-
-  if (event.request.mode === "navigate") {
-    event.respondWith(
-      fetch(event.request, { cache: "no-store" })
-        .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put("./", copy));
-          return response;
-        })
-        .catch(() => caches.match("./"))
-    );
-    return;
-  }
-
-  event.respondWith(
-    caches.match(event.request).then((cached) => {
-      if (cached) return cached;
-      return fetch(event.request).then((response) => {
-        const copy = response.clone();
-        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-        return response;
-      });
-    })
-  );
-});'''
-          if old_fetch not in text:
-              raise SystemExit('fetch handler pattern not found')
-          text = text.replace(old_fetch, new_fetch, 1)
-          sw.write_text(text, encoding='utf-8')
-
-          Path('tests/pwa-update-refresh.test.cjs').write_text('''const assert = require("node:assert/strict");\nconst fs = require("node:fs");\nconst index = fs.readFileSync("index.html", "utf8");\nconst app = fs.readFileSync("app.js", "utf8");\nconst sw = fs.readFileSync("service-worker.js", "utf8");\nassert.match(index, /active-trip-inspection-v55/);\nassert.match(app, /updateViaCache: "none"/);\nassert.match(app, /controllerchange/);\nassert.match(sw, /cache: "reload"/);\nassert.match(sw, /event\.request\.mode === "navigate"/);\nassert.match(sw, /mileage-logger-active-trip-inspection-v55/);\nconsole.log("PWA update refresh checks passed.");\n''', encoding='utf-8')
-          PY
-
+        run: echo 'ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCgppbmRleCA9IFBhdGgoImluZGV4Lmh0bWwiKQp0ZXh0ID0gaW5kZXgucmVhZF90ZXh0KGVuY29kaW5nPSJ1dGYtOCIpCnRleHQgPSB0ZXh0LnJlcGxhY2UoIndvcmtmbG93LXVwZ3JhZGVzLTIiLCAiYWN0aXZlLXRyaXAtaW5zcGVjdGlvbi12NTUiKQppbmRleC53cml0ZV90ZXh0KHRleHQsIGVuY29kaW5nPSJ1dGYtOCIpCgphcHAgPSBQYXRoKCJhcHAuanMiKQp0ZXh0ID0gYXBwLnJlYWRfdGV4dChlbmNvZGluZz0idXRmLTgiKQpvbGQgPSAnbmF2aWdhdG9yLnNlcnZpY2VXb3JrZXIucmVnaXN0ZXIoIi4vc2VydmljZS13b3JrZXIuanMiKS5jYXRjaCgoZXJyb3IpID0+IHsnCm5ldyA9ICIiIm5hdmlnYXRvci5zZXJ2aWNlV29ya2VyLmFkZEV2ZW50TGlzdGVuZXIoImNvbnRyb2xsZXJjaGFuZ2UiLCAoKSA9PiB7CiAgICAgICAgY29uc3QgcmVsb2FkS2V5ID0gIm1pbGVhZ2VfbG9nZ2VyX3N3X2NvbnRyb2xsZXJfcmVsb2FkZWQiOwogICAgICAgIGlmIChzZXNzaW9uU3RvcmFnZS5nZXRJdGVtKHJlbG9hZEtleSkpIHJldHVybjsKICAgICAgICBzZXNzaW9uU3RvcmFnZS5zZXRJdGVtKHJlbG9hZEtleSwgIjEiKTsKICAgICAgICB3aW5kb3cubG9jYXRpb24ucmVsb2FkKCk7CiAgICAgIH0pOwogICAgICBuYXZpZ2F0b3Iuc2VydmljZVdvcmtlci5yZWdpc3RlcigiLi9zZXJ2aWNlLXdvcmtlci5qcyIsIHsgdXBkYXRlVmlhQ2FjaGU6ICJub25lIiB9KQogICAgICAgIC50aGVuKChyZWdpc3RyYXRpb24pID0+IHJlZ2lzdHJhdGlvbi51cGRhdGUoKSkKICAgICAgICAuY2F0Y2goKGVycm9yKSA9PiB7IiIiCmlmIG9sZCBub3QgaW4gdGV4dDoKICAgIHJhaXNlIFN5c3RlbUV4aXQoInNlcnZpY2Ugd29ya2VyIHJlZ2lzdHJhdGlvbiBwYXR0ZXJuIG5vdCBmb3VuZCIpCnRleHQgPSB0ZXh0LnJlcGxhY2Uob2xkLCBuZXcsIDEpCmFwcC53cml0ZV90ZXh0KHRleHQsIGVuY29kaW5nPSJ1dGYtOCIpCgpzdyA9IFBhdGgoInNlcnZpY2Utd29ya2VyLmpzIikKdGV4dCA9IHN3LnJlYWRfdGV4dChlbmNvZGluZz0idXRmLTgiKQp0ZXh0ID0gdGV4dC5yZXBsYWNlKCJtaWxlYWdlLWxvZ2dlci1hY3RpdmUtdHJpcC1pbnNwZWN0aW9uLXY1NCIsICJtaWxlYWdlLWxvZ2dlci1hY3RpdmUtdHJpcC1pbnNwZWN0aW9uLXY1NSIpCnRleHQgPSB0ZXh0LnJlcGxhY2UoIndvcmtmbG93LXVwZ3JhZGVzLTIiLCAiYWN0aXZlLXRyaXAtaW5zcGVjdGlvbi12NTUiKQpvbGRfaW5zdGFsbCA9ICIiInNlbGYuYWRkRXZlbnRMaXN0ZW5lcigiaW5zdGFsbCIsIChldmVudCkgPT4gewogIGV2ZW50LndhaXRVbnRpbCgKICAgIGNhY2hlcy5vcGVuKENBQ0hFX05BTUUpCiAgICAgIC50aGVuKChjYWNoZSkgPT4gY2FjaGUuYWRkQWxsKEFQUF9GSUxFUykpCiAgICAgIC50aGVuKCgpID0+IHNlbGYuc2tpcFdhaXRpbmcoKSkKICApOwp9KTsiIiIKbmV3X2luc3RhbGwgPSAiIiJzZWxmLmFkZEV2ZW50TGlzdGVuZXIoImluc3RhbGwiLCAoZXZlbnQpID0+IHsKICBldmVudC53YWl0VW50aWwoCiAgICBjYWNoZXMub3BlbihDQUNIRV9OQU1FKQogICAgICAudGhlbigoY2FjaGUpID0+IFByb21pc2UuYWxsKEFQUF9GSUxFUy5tYXAoYXN5bmMgKHVybCkgPT4gewogICAgICAgIGNvbnN0IHJlc3BvbnNlID0gYXdhaXQgZmV0Y2godXJsLCB7IGNhY2hlOiAicmVsb2FkIiB9KTsKICAgICAgICBpZiAoIXJlc3BvbnNlLm9rKSB0aHJvdyBuZXcgRXJyb3IoYENvdWxkIG5vdCByZWZyZXNoICR7dXJsfTogJHtyZXNwb25zZS5zdGF0dXN9YCk7CiAgICAgICAgYXdhaXQgY2FjaGUucHV0KHVybCwgcmVzcG9uc2UpOwogICAgICB9KSkpCiAgICAgIC50aGVuKCgpID0+IHNlbGYuc2tpcFdhaXRpbmcoKSkKICApOwp9KTsiIiIKaWYgb2xkX2luc3RhbGwgbm90IGluIHRleHQ6CiAgICByYWlzZSBTeXN0ZW1FeGl0KCJpbnN0YWxsIGhhbmRsZXIgcGF0dGVybiBub3QgZm91bmQiKQp0ZXh0ID0gdGV4dC5yZXBsYWNlKG9sZF9pbnN0YWxsLCBuZXdfaW5zdGFsbCwgMSkKCm9sZF9mZXRjaCA9ICIiInNlbGYuYWRkRXZlbnRMaXN0ZW5lcigiZmV0Y2giLCAoZXZlbnQpID0+IHsKICBpZiAoZXZlbnQucmVxdWVzdC5tZXRob2QgIT09ICJHRVQiKSByZXR1cm47CgogIGV2ZW50LnJlc3BvbmRXaXRoKAogICAgY2FjaGVzLm1hdGNoKGV2ZW50LnJlcXVlc3QpLnRoZW4oKGNhY2hlZCkgPT4gewogICAgICBpZiAoY2FjaGVkKSByZXR1cm4gY2FjaGVkOwoKICAgICAgcmV0dXJuIGZldGNoKGV2ZW50LnJlcXVlc3QpLnRoZW4oKHJlc3BvbnNlKSA9PiB7CiAgICAgICAgY29uc3QgY29weSA9IHJlc3BvbnNlLmNsb25lKCk7CiAgICAgICAgY2FjaGVzLm9wZW4oQ0FDSEVfTkFNRSkudGhlbigoY2FjaGUpID0+IGNhY2hlLnB1dChldmVudC5yZXF1ZXN0LCBjb3B5KSk7CiAgICAgICAgcmV0dXJuIHJlc3BvbnNlOwogICAgICB9KS5jYXRjaCgoKSA9PiBjYWNoZXMubWF0Y2goIi4vaW5kZXguaHRtbCIpKTsKICAgIH0pCiAgKTsKfSk7IiIiCm5ld19mZXRjaCA9ICIiInNlbGYuYWRkRXZlbnRMaXN0ZW5lcigiZmV0Y2giLCAoZXZlbnQpID0+IHsKICBpZiAoZXZlbnQucmVxdWVzdC5tZXRob2QgIT09ICJHRVQiKSByZXR1cm47CgogIGlmIChldmVudC5yZXF1ZXN0Lm1vZGUgPT09ICJuYXZpZ2F0ZSIpIHsKICAgIGV2ZW50LnJlc3BvbmRXaXRoKAogICAgICBmZXRjaChldmVudC5yZXF1ZXN0LCB7IGNhY2hlOiAibm8tc3RvcmUiIH0pCiAgICAgICAgLnRoZW4oKHJlc3BvbnNlKSA9PiB7CiAgICAgICAgICBjb25zdCBjb3B5ID0gcmVzcG9uc2UuY2xvbmUoKTsKICAgICAgICAgIGNhY2hlcy5vcGVuKENBQ0hFX05BTUUpLnRoZW4oKGNhY2hlKSA9PiBjYWNoZS5wdXQoIi4vIiwgY29weSkpOwogICAgICAgICAgcmV0dXJuIHJlc3BvbnNlOwogICAgICAgIH0pCiAgICAgICAgLmNhdGNoKCgpID0+IGNhY2hlcy5tYXRjaCgiLi8iKSkKICAgICk7CiAgICByZXR1cm47CiAgfQoKICBldmVudC5yZXNwb25kV2l0aCgKICAgIGNhY2hlcy5tYXRjaChldmVudC5yZXF1ZXN0KS50aGVuKChjYWNoZWQpID0+IHsKICAgICAgaWYgKGNhY2hlZCkgcmV0dXJuIGNhY2hlZDsKICAgICAgcmV0dXJuIGZldGNoKGV2ZW50LnJlcXVlc3QpLnRoZW4oKHJlc3BvbnNlKSA9PiB7CiAgICAgICAgY29uc3QgY29weSA9IHJlc3BvbnNlLmNsb25lKCk7CiAgICAgICAgY2FjaGVzLm9wZW4oQ0FDSEVfTkFNRSkudGhlbigoY2FjaGUpID0+IGNhY2hlLnB1dChldmVudC5yZXF1ZXN0LCBjb3B5KSk7CiAgICAgICAgcmV0dXJuIHJlc3BvbnNlOwogICAgICB9KTsKICAgIH0pCiAgKTsKfSk7IiIiCmlmIG9sZF9mZXRjaCBub3QgaW4gdGV4dDoKICAgIHJhaXNlIFN5c3RlbUV4aXQoImZldGNoIGhhbmRsZXIgcGF0dGVybiBub3QgZm91bmQiKQp0ZXh0ID0gdGV4dC5yZXBsYWNlKG9sZF9mZXRjaCwgbmV3X2ZldGNoLCAxKQpzdy53cml0ZV90ZXh0KHRleHQsIGVuY29kaW5nPSJ1dGYtOCIpCgpQYXRoKCJ0ZXN0cy9wd2EtdXBkYXRlLXJlZnJlc2gudGVzdC5janMiKS53cml0ZV90ZXh0KAoiIiJjb25zdCBhc3NlcnQgPSByZXF1aXJlKCJub2RlOmFzc2VydC9zdHJpY3QiKTsKY29uc3QgZnMgPSByZXF1aXJlKCJub2RlOmZzIik7CmNvbnN0IGluZGV4ID0gZnMucmVhZEZpbGVTeW5jKCJpbmRleC5odG1sIiwgInV0ZjgiKTsKY29uc3QgYXBwID0gZnMucmVhZEZpbGVTeW5jKCJhcHAuanMiLCAidXRmOCIpOwpjb25zdCBzdyA9IGZzLnJlYWRGaWxlU3luYygic2VydmljZS13b3JrZXIuanMiLCAidXRmOCIpOwphc3NlcnQubWF0Y2goaW5kZXgsIC9hY3RpdmUtdHJpcC1pbnNwZWN0aW9uLXY1NS8pOwphc3NlcnQubWF0Y2goYXBwLCAvdXBkYXRlVmlhQ2FjaGU6ICJub25lIi8pOwphc3NlcnQubWF0Y2goYXBwLCAvY29udHJvbGxlcmNoYW5nZS8pOwphc3NlcnQubWF0Y2goc3csIC9jYWNoZTogInJlbG9hZCIvKTsKYXNzZXJ0Lm1hdGNoKHN3LCAvZXZlbnRcLnJlcXVlc3RcLm1vZGUgPT09ICJuYXZpZ2F0ZSIvKTsKYXNzZXJ0Lm1hdGNoKHN3LCAvbWlsZWFnZS1sb2dnZXItYWN0aXZlLXRyaXAtaW5zcGVjdGlvbi12NTUvKTsKY29uc29sZS5sb2coIlBXQSB1cGRhdGUgcmVmcmVzaCBjaGVja3MgcGFzc2VkLiIpOwoiIiIsCmVuY29kaW5nPSJ1dGYtOCIsCikK' | base64 -d | python3
       - name: Validate
         run: |
           node --check app.js
@@ -126,7 +24,6 @@ jobs:
           node --check service-worker.js
           node tests/active-trip-inspection.test.cjs
           node tests/pwa-update-refresh.test.cjs
-
       - name: Commit patch
         run: |
           git config user.name "github-actions[bot]"
