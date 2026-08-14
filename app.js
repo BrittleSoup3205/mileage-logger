@@ -2529,6 +2529,10 @@
     renderAll();
     hidePrimaryPanels();
 
+    window.dispatchEvent(new CustomEvent("mileage:trip-finalized", {
+      detail: { tripId: completedTrip.id }
+    }));
+
     const difference = completedTrip.gpsRouteMiles > 0
       ? Math.abs(Number(miles) - Number(completedTrip.gpsRouteMiles))
       : 0;
