@@ -2,7 +2,8 @@
   "use strict";
 
   const STATE_KEY = "mileage_logger_state_v3";
-  const INSPECTION_SCHEMA_VERSION = 3;
+  const INSPECTION_SCHEMA_VERSION = 4;
+  const WORKFLOW_DATA = window.MileageWorkflowData || {};
   const REFRESH_INTERVAL_MS = 1200;
   const PRIVATE_FILE_DB_NAME = "MileageLoggerPrivateFiles";
   const PRIVATE_FILE_DB_VERSION = 1;
@@ -259,7 +260,11 @@
       parsed.trips = Array.isArray(parsed.trips) ? parsed.trips : [];
       parsed.settings = parsed.settings && typeof parsed.settings === "object" ? parsed.settings : {};
       parsed.settings.inspections = Array.isArray(parsed.settings.inspections)
-        ? parsed.settings.inspections
+        ? parsed.settings.inspections.map((inspection) => (
+          typeof WORKFLOW_DATA.migrateInspection === "function"
+            ? WORKFLOW_DATA.migrateInspection(inspection)
+            : inspection
+        ))
         : [];
       parsed.settings.inspectionIgnoredTripIds = Array.isArray(parsed.settings.inspectionIgnoredTripIds)
         ? parsed.settings.inspectionIgnoredTripIds
@@ -284,7 +289,11 @@
   function writeState(state) {
     state.settings = state.settings || {};
     state.settings.inspections = Array.isArray(state.settings.inspections)
-      ? state.settings.inspections
+      ? state.settings.inspections.map((inspection) => (
+        typeof WORKFLOW_DATA.migrateInspection === "function"
+          ? WORKFLOW_DATA.migrateInspection(inspection)
+          : inspection
+      ))
       : [];
     state.settings.inspectionIgnoredTripIds = Array.isArray(state.settings.inspectionIgnoredTripIds)
       ? state.settings.inspectionIgnoredTripIds
@@ -442,6 +451,7 @@
       inspection.observations,
       inspection.deficiencies,
       inspection.acceptanceStatus,
+      ...inspectionLoads(inspection).flatMap((load) => [load.identifier, load.status, load.notes, load.deficiencyFollowUp]),
       ...followUps.flatMap((item) => [item.action, item.responsibleParty, item.status])
     ].join(" ").toLowerCase();
   }
@@ -959,7 +969,7 @@
   }
 
   function showInspectionSection(openNew = false, tripId = "") {
-    ["startSection", "endSection", "staSection", "logSection"].forEach((id) => {
+    ["startSection", "endSection", "staSection", "logSection", "workflowQueuesSection"].forEach((id) => {
       $(id)?.classList.add("hidden");
     });
     $("inspectionSection")?.classList.remove("hidden");
@@ -1068,6 +1078,102 @@
     `).join("");
   }
 
+  function inspectionLoads(inspection) {
+    if (typeof WORKFLOW_DATA.inspectionLoads === "function") {
+      return WORKFLOW_DATA.inspectionLoads(inspection);
+    }
+    const legacy = String(inspection?.vendorLoadNumber || "").trim();
+    return legacy ? [{ id: `${inspection?.id || "inspection"}-load-1`, identifier: legacy, status: "Not Recorded", notes: "", deficiencyFollowUp: "", photoIds: [] }] : [];
+  }
+
+  function loadIdentifiers(inspection) {
+    return inspectionLoads(inspection).map((load) => load.identifier).filter(Boolean);
+  }
+
+  function loadDetailsText(inspection) {
+    const photoLabels = new Map((inspection?.photos || []).map((photo) => [photo.id, photo.caption || photo.name || photo.id]));
+    return inspectionLoads(inspection).map((load) => [
+      load.identifier || "Unidentified load",
+      load.status || "Not Recorded",
+      load.notes,
+      load.deficiencyFollowUp ? `Follow-up: ${load.deficiencyFollowUp}` : "",
+      load.photoIds?.length ? `Photos: ${load.photoIds.map((id) => photoLabels.get(id) || id).join(" | ")}` : ""
+    ].filter(Boolean).join(" — ")).join("\n");
+  }
+
+  function loadPhotoOptions(selectedIds = []) {
+    const selected = new Set(selectedIds);
+    return currentPhotos.map((photo) => {
+      const label = photo.caption || photo.name || "Inspection photo";
+      return `<option value="${escapeHTML(photo.id)}"${selected.has(photo.id) ? " selected" : ""}>${escapeHTML(label)}</option>`;
+    }).join("");
+  }
+
+  function renderLoadEditors(loads) {
+    const list = $("inspectionLoadEditorList");
+    if (!list) return;
+    const items = Array.isArray(loads) ? loads : [];
+    list.innerHTML = items.length ? items.map((load) => `
+      <article class="load-editor" data-load-id="${escapeHTML(load.id || makeId("load"))}">
+        <div class="load-editor-routine">
+          <label>Vendor Load #<input class="load-identifier" value="${escapeHTML(load.identifier || "")}" placeholder="Enter exactly as assigned"></label>
+          <label>Status / result<select class="load-status">${createOptionList(WORKFLOW_DATA.LOAD_STATUSES || ["Not Recorded", "Accepted", "Accepted with Follow-up", "Released", "Hold", "Rejected"], load.status || "Not Recorded")}</select></label>
+          <button class="button button-danger-outline button-small remove-load-btn" type="button">Remove</button>
+        </div>
+        <details class="load-exception-details"${load.notes || load.deficiencyFollowUp || load.photoIds?.length ? " open" : ""}>
+          <summary>Optional notes, follow-up, and photos</summary>
+          <div class="inspection-form-grid">
+            <label class="full">Load notes<textarea class="load-notes" rows="2" placeholder="Optional details for this load">${escapeHTML(load.notes || "")}</textarea></label>
+            <label class="full">Deficiency / follow-up<textarea class="load-deficiency" rows="2" placeholder="Only when an exception needs tracking">${escapeHTML(load.deficiencyFollowUp || "")}</textarea></label>
+            <label class="full">Associated inspection photos<select class="load-photo-ids" multiple size="${Math.max(2, Math.min(5, currentPhotos.length || 2))}">${loadPhotoOptions(load.photoIds || [])}</select><small>${currentPhotos.length ? "Select one or more photos for this load." : "Add inspection photos first, then associate them here."}</small></label>
+          </div>
+        </details>
+      </article>
+    `).join("") : `<div class="inspection-empty compact">No vendor loads entered. Add a load only when the vendor assigned an identifier.</div>`;
+  }
+
+  function collectLoads() {
+    const existingLoads = new Map(inspectionLoads(
+      readState().settings.inspections.find((inspection) => inspection.id === editingInspectionId)
+    ).map((load) => [load.id, load]));
+    return [...document.querySelectorAll("#inspectionLoadEditorList .load-editor")].map((row) => {
+      const previous = existingLoads.get(row.dataset.loadId) || {};
+      return {
+        id: row.dataset.loadId || makeId("load"),
+        identifier: row.querySelector(".load-identifier")?.value.trim() || "",
+        status: row.querySelector(".load-status")?.value || "Not Recorded",
+        notes: row.querySelector(".load-notes")?.value.trim() || "",
+        deficiencyFollowUp: row.querySelector(".load-deficiency")?.value.trim() || "",
+        photoIds: [...(row.querySelector(".load-photo-ids")?.selectedOptions || [])].map((option) => option.value),
+        createdISO: previous.createdISO || nowISO(),
+        modifiedISO: nowISO()
+      };
+    }).filter((load) => load.identifier || load.notes || load.deficiencyFollowUp || load.photoIds.length);
+  }
+
+  function refreshLoadPhotoOptions() {
+    document.querySelectorAll("#inspectionLoadEditorList .load-photo-ids").forEach((select) => {
+      const selected = [...select.selectedOptions].map((option) => option.value);
+      select.innerHTML = loadPhotoOptions(selected);
+      select.size = Math.max(2, Math.min(5, currentPhotos.length || 2));
+    });
+  }
+
+  function priorLoadHistoryMarkup(state, activeJobId, currentInspectionId) {
+    if (!activeJobId) return `<div class="inspection-empty compact">Link an Active Job to see its prior vendor loads.</div>`;
+    const prior = state.settings.inspections
+      .filter((inspection) => inspection.activeJobId === activeJobId && inspection.id !== currentInspectionId)
+      .sort((a, b) => String(b.date || b.modifiedISO || "").localeCompare(String(a.date || a.modifiedISO || "")))
+      .flatMap((inspection) => inspectionLoads(inspection).map((load) => ({ inspection, load })));
+    if (!prior.length) return `<div class="inspection-empty compact">No prior vendor loads are recorded for ${escapeHTML(activeJobId)}.</div>`;
+    return `<div class="prior-load-history">${prior.map(({ inspection, load }) => `
+      <article>
+        <div><strong>${escapeHTML(load.identifier)}</strong><span>${escapeHTML(load.status || "Not Recorded")}</span></div>
+        <small>${escapeHTML(displayDate(inspection.date))} • ${escapeHTML(inspection.status || "Draft")}${inspection.activity ? ` • ${escapeHTML(inspection.activity)}` : ""}</small>
+        ${load.deficiencyFollowUp ? `<p><strong>Follow-up:</strong> ${escapeHTML(load.deficiencyFollowUp)}</p>` : ""}
+      </article>`).join("")}</div>`;
+  }
+
   function collectPhotoMetadata() {
     const captions = new Map(
       [...document.querySelectorAll("#inspectionPhotoList [data-photo-caption]")].map((input) => [
@@ -1091,6 +1197,7 @@
 
     if (!currentPhotos.length) {
       list.innerHTML = `<div class="inspection-empty compact">No photos attached.</div>`;
+      refreshLoadPhotoOptions();
       return;
     }
 
@@ -1107,6 +1214,7 @@
         </div>
       </article>
     `).join("");
+    refreshLoadPhotoOptions();
 
     if (!window.MileageMediaStore) return;
     await Promise.all(currentPhotos.map(async (photo) => {
@@ -1312,9 +1420,21 @@
             <label>2. ISO drawing number<input id="inspectionIsoNumber" value="${escapeHTML(values.isoDrawingNumber || "")}" placeholder="Example: 326-0041-05A"></label>
             <label>3. Vendor job number<input id="inspectionVendorJob" value="${escapeHTML(values.vendorJobNumber || activeJob?.vendorJobs || "")}" placeholder="Shop job number"></label>
             <label>4. Piece / spool number<input id="inspectionPieceSpool" value="${escapeHTML(values.pieceSpoolNumber || "")}" placeholder="Example: 35 or 2S1"></label>
-            <label>Vendor Load #<input id="inspectionVendorLoad" value="${escapeHTML(values.vendorLoadNumber || "")}" placeholder="Enter exactly as assigned on shipping list"></label>
           </div>
         </fieldset>
+
+        <section class="inspection-workflow-panel inspection-load-panel">
+          <div class="section-heading compact">
+            <div><p class="eyebrow">Vendor-assigned identifiers</p><h3>Vendor Loads</h3></div>
+            <button id="addInspectionLoadBtn" class="button button-secondary button-small" type="button">+ Add Load</button>
+          </div>
+          <p class="muted">Enter each identifier exactly as the vendor assigned it. Routine loads only need the load number and status.</p>
+          <div id="inspectionLoadEditorList" class="load-editor-list"></div>
+          <details class="prior-load-details">
+            <summary>Prior loads for ${escapeHTML(activeJob?.aj || "this Active Job")}</summary>
+            ${priorLoadHistoryMarkup(state, activeJob?.aj || values.activeJobId || "", editingInspectionId)}
+          </details>
+        </section>
 
         <datalist id="inspectionProjectList"></datalist>
 
@@ -1384,6 +1504,7 @@
     panel.classList.remove("hidden");
     $("inspectionSection")?.classList.add("inspection-form-open");
     populateProjectDatalist(state);
+    renderLoadEditors(inspectionLoads(values));
     renderFollowUpEditors(Array.isArray(values.followUps) ? values.followUps : []);
     renderPhotoEditors();
     renderLinkedTripPhotos(trip);
@@ -1436,7 +1557,8 @@
     if (inspection.isoDrawingNumber) identifiers.push(`ISO ${inspection.isoDrawingNumber}`);
     if (inspection.vendorJobNumber) identifiers.push(`vendor job ${inspection.vendorJobNumber}`);
     if (inspection.pieceSpoolNumber) identifiers.push(`piece/spool ${inspection.pieceSpoolNumber}`);
-    if (inspection.vendorLoadNumber) identifiers.push(`vendor load ${inspection.vendorLoadNumber}`);
+    const loads = loadIdentifiers(inspection);
+    if (loads.length) identifiers.push(`vendor load${loads.length === 1 ? "" : "s"} ${loads.join(", ")}`);
     return identifiers.length ? identifiers.join(", ") : "the identified work scope";
   }
 
@@ -1607,6 +1729,7 @@
     const trip = getTripById(state, selectedTripId);
     const activeJob = activeJobById($("inspectionActiveJobId")?.value);
     const createdISO = existing?.createdISO || nowISO();
+    const loads = collectLoads();
     const inspection = {
       id: existing?.id || editingInspectionId || makeId(),
       schemaVersion: INSPECTION_SCHEMA_VERSION,
@@ -1627,7 +1750,9 @@
       isoDrawingNumber: $("inspectionIsoNumber")?.value.trim() || "",
       vendorJobNumber: $("inspectionVendorJob")?.value.trim() || "",
       pieceSpoolNumber: $("inspectionPieceSpool")?.value.trim() || "",
-      vendorLoadNumber: $("inspectionVendorLoad")?.value.trim() || "",
+      loads,
+      // Keep the legacy alias so old backups and integrations still see the first load.
+      vendorLoadNumber: loads[0]?.identifier || "",
       inspectionType: $("inspectionType")?.value || "Inspection",
       activity: $("inspectionActivity")?.value.trim() || "",
       status: statusOverride || $("inspectionStatus")?.value || "Draft",
@@ -1749,6 +1874,8 @@
       endTime: "",
       hoursOnSite: "",
       photos: [],
+      loads: [],
+      vendorLoadNumber: "",
       followUps: (source.followUps || []).map((item) => ({
         ...item,
         id: makeId("followup"),
@@ -1854,6 +1981,7 @@
       const openCount = followUps.filter((item) => item.status !== "Closed").length;
       const snapshot = inspection.tripSnapshot;
       const photos = Array.isArray(inspection.photos) ? inspection.photos : [];
+      const loads = inspectionLoads(inspection);
       const statusClass = ["Complete", "Released"].includes(inspection.status)
         ? "inspection-pill-complete"
         : "inspection-pill-open";
@@ -1885,7 +2013,12 @@
             <span><strong>Mileage:</strong> ${snapshot ? formatMiles(snapshot.miles) : "Standalone"}</span>
             <span><strong>Open actions:</strong> ${openCount}</span>
             <span><strong>Photos:</strong> ${photos.length}</span>
+            <span><strong>Vendor loads:</strong> ${loads.length ? escapeHTML(loads.map((load) => load.identifier).filter(Boolean).join(" | ")) : "—"}</span>
           </div>
+
+          ${loads.length ? `<div class="inspection-load-summary">${loads.map((load) => `
+            <span><strong>${escapeHTML(load.identifier || "Unidentified load")}</strong> • ${escapeHTML(load.status || "Not Recorded")}${load.deficiencyFollowUp ? ` • Follow-up: ${escapeHTML(load.deficiencyFollowUp)}` : ""}</span>
+          `).join("")}</div>` : ""}
 
           ${inspection.summary ? `<div class="inspection-summary"><strong>Summary</strong><br>${escapeHTML(inspection.summary)}</div>` : ""}
           ${inspection.quickNote ? `<div class="inspection-summary"><strong>Quick note</strong><br>${escapeHTML(inspection.quickNote)}</div>` : ""}
@@ -2032,7 +2165,12 @@
       `ISO Drawing: ${inspection.isoDrawingNumber || "Not entered"}`,
       `Vendor Job: ${inspection.vendorJobNumber || "Not entered"}`,
       `Piece / Spool: ${inspection.pieceSpoolNumber || "Not entered"}`,
-      `Vendor Load #: ${inspection.vendorLoadNumber || "Not entered"}`,
+      `Vendor Loads: ${loadIdentifiers(inspection).join(" | ") || "Not entered"}`,
+      ...(inspectionLoads(inspection).length ? [
+        "",
+        "VENDOR LOAD DETAILS",
+        loadDetailsText(inspection)
+      ] : []),
       `Inspection Type: ${inspection.inspectionType || "Inspection"}`,
       `Activity: ${inspection.activity || "Not entered"}`,
       `Status: ${inspection.status || "Not entered"}`,
@@ -2077,19 +2215,19 @@
       "Inspection Type", "Activity", "Status", "Acceptance / Release", "Start Time", "End Time",
       "Hours On Site", "Odometer Miles", "GPS Miles", "STA Generated", "STA Filename", "Photo Count",
       "Quick Note", "Summary", "Generated Report Language", "Observations", "Deficiencies / Exceptions", "Open Follow-ups", "Closed Follow-ups",
-      "Created", "Modified"
+      "Created", "Modified", "Vendor Load Details"
     ];
     const row = [
       displayDate(inspection.date), inspection.activeJobId, inspection.sbInspectionNo, inspection.customer,
       inspection.reportingVendor, inspection.inspectionLocation || inspection.vendor, inspection.projectName, inspection.projectNumber,
       inspection.purchaseOrderJob, inspection.equipmentTag, inspection.isoDrawingNumber, inspection.vendorJobNumber,
-      inspection.pieceSpoolNumber, inspection.vendorLoadNumber, inspection.inspectionType, inspection.activity,
+      inspection.pieceSpoolNumber, loadIdentifiers(inspection).join(" | "), inspection.inspectionType, inspection.activity,
       inspection.status, inspection.acceptanceStatus, inspection.startTime, inspection.endTime,
       inspection.hoursOnSite, snapshot.miles ?? "", snapshot.gpsRouteMiles ?? "",
       snapshot.staGenerated ? "Yes" : "No", snapshot.staFileName || "", photoCount,
       inspection.quickNote, inspection.summary, inspection.generatedReportLanguage, inspection.observations, inspection.deficiencies,
       inspectionFollowUpText(inspection, "Open"), inspectionFollowUpText(inspection, "Closed"),
-      formatDateTime(inspection.createdISO), formatDateTime(inspection.modifiedISO)
+      formatDateTime(inspection.createdISO), formatDateTime(inspection.modifiedISO), loadDetailsText(inspection)
     ];
     return [header, row].map((values) => values.map(csvEscape).join(",")).join("\r\n");
   }
@@ -2594,7 +2732,8 @@
     }).join("\n");
     const inspectionAudit = [
       inspection.observations || "",
-      inspection.deficiencies ? `Deficiencies / Exceptions: ${inspection.deficiencies}` : ""
+      inspection.deficiencies ? `Deficiencies / Exceptions: ${inspection.deficiencies}` : "",
+      inspectionLoads(inspection).length ? `Vendor Loads:\n${loadDetailsText(inspection)}` : ""
     ].filter(Boolean).join("\n");
     setParagraphAfterLabel(documentXml, "DESCRIPTION:", reportLanguage);
     setParagraphAfterLabel(documentXml, "ACTION ITEMS:", actionItems);
@@ -2681,6 +2820,7 @@
       ["Reporting Vendor", inspection.reportingVendor || inspection.vendor || "Not entered", "Inspection Location", inspection.inspectionLocation || inspection.vendor || "Not entered"],
       ["S&B Order / PO", inspection.purchaseOrderJob || "Not entered", "Equipment Tag", inspection.equipmentTag || "Not entered"],
       ["ISO Drawing", inspection.isoDrawingNumber || "Not entered", "Vendor Job", inspection.vendorJobNumber || "Not entered"],
+      ["Vendor Loads", loadIdentifiers(inspection).join(" | ") || "Not entered", "Load Count", String(inspectionLoads(inspection).length)],
       ["Inspection Type", inspection.inspectionType || "Inspection", "Activity", inspection.activity || "Not entered"],
       ["Status", inspection.status || "Not entered", "Acceptance / Release", inspection.acceptanceStatus || "Not Determined"],
       ["Start Time", inspection.startTime || "Not entered", "End Time", inspection.endTime || "Not entered"],
@@ -2742,6 +2882,8 @@
       inspection.quickNote ? wordParagraph(inspection.quickNote) : "",
       wordParagraph("Observations", "Heading1", { keepNext: true }),
       wordParagraph(inspection.observations || "No observations entered."),
+      inspectionLoads(inspection).length ? wordParagraph("Vendor Loads", "Heading1", { keepNext: true }) : "",
+      inspectionLoads(inspection).length ? wordParagraph(loadDetailsText(inspection)) : "",
       wordParagraph("Deficiencies / Exceptions", "Heading1", { keepNext: true }),
       wordParagraph(inspection.deficiencies || "None entered."),
       followUps.length ? wordParagraph("Follow-up Actions", "Heading1", { keepNext: true }) : "",
@@ -2922,6 +3064,7 @@
     drawField("Equipment Tag", inspection.equipmentTag);
     drawField("ISO Drawing", inspection.isoDrawingNumber);
     drawField("Vendor Job", inspection.vendorJobNumber);
+    drawField("Vendor Loads", loadIdentifiers(inspection).join(" | "));
     drawField("Inspection Type", inspection.inspectionType);
     drawField("Activity", inspection.activity);
     drawField("Status", inspection.status);
@@ -2939,6 +3082,7 @@
     if (inspection.generatedReportLanguage) drawSection("Generated Draft Report Language", inspection.generatedReportLanguage);
     if (inspection.quickNote) drawSection("Quick Note", inspection.quickNote);
     drawSection("Observations", inspection.observations);
+    if (inspectionLoads(inspection).length) drawSection("Vendor Loads", loadDetailsText(inspection));
     drawSection("Deficiencies / Exceptions", inspection.deficiencies || "None entered.");
     drawSection("Open Follow-ups", inspectionFollowUpText(inspection, "Open") || "None.");
     drawSection("Closed Follow-ups", inspectionFollowUpText(inspection, "Closed") || "None.");
@@ -3169,7 +3313,7 @@
       "Inspection Type", "Activity", "Status", "Acceptance / Release", "Start Time", "End Time",
       "Hours On Site", "Linked Trip", "Odometer Miles", "GPS Miles", "STA Generated", "STA Filename",
       "Quick Note", "Summary", "Generated Report Language", "Observations", "Deficiencies / Exceptions", "Open Follow-ups", "Closed Follow-ups",
-      "Created", "Modified"
+      "Created", "Modified", "Vendor Load Details"
     ];
 
     const rows = inspections.map((inspection) => {
@@ -3183,12 +3327,12 @@
         displayDate(inspection.date), inspection.activeJobId, inspection.sbInspectionNo, inspection.customer,
         inspection.reportingVendor, inspection.inspectionLocation || inspection.vendor, inspection.projectName, inspection.projectNumber,
         inspection.purchaseOrderJob, inspection.equipmentTag, inspection.isoDrawingNumber, inspection.vendorJobNumber,
-        inspection.pieceSpoolNumber, inspection.vendorLoadNumber, inspection.inspectionType, inspection.activity,
+        inspection.pieceSpoolNumber, loadIdentifiers(inspection).join(" | "), inspection.inspectionType, inspection.activity,
         inspection.status, inspection.acceptanceStatus, inspection.startTime, inspection.endTime,
         inspection.hoursOnSite, inspection.tripId ? "Yes" : "No", snapshot.miles ?? "",
         snapshot.gpsRouteMiles ?? "", snapshot.staGenerated ? "Yes" : "No", snapshot.staFileName || "",
         inspection.quickNote, inspection.summary, inspection.generatedReportLanguage, inspection.observations, inspection.deficiencies, open, closed,
-        formatDateTime(inspection.createdISO), formatDateTime(inspection.modifiedISO)
+        formatDateTime(inspection.createdISO), formatDateTime(inspection.modifiedISO), loadDetailsText(inspection)
       ];
     });
 
@@ -3365,6 +3509,22 @@
         return;
       }
 
+      if (event.target.closest("#addInspectionLoadBtn")) {
+        const current = collectLoads();
+        current.push({
+          id: makeId("load"),
+          identifier: "",
+          status: "Not Recorded",
+          notes: "",
+          deficiencyFollowUp: "",
+          photoIds: []
+        });
+        renderLoadEditors(current);
+        document.querySelector("#inspectionLoadEditorList .load-editor:last-child .load-identifier")?.focus();
+        scheduleInspectionAutosave();
+        return;
+      }
+
       if (event.target.closest("#takeInspectionPhotoBtn")) {
         $("takeInspectionPhotoInput")?.click();
         return;
@@ -3399,6 +3559,10 @@
               const inspection = state.settings.inspections.find((item) => item.id === editingInspectionId);
               if (inspection) {
                 inspection.photos = (inspection.photos || []).filter((photo) => photo.id !== photoId);
+                inspection.loads = inspectionLoads(inspection).map((load) => ({
+                  ...load,
+                  photoIds: (load.photoIds || []).filter((id) => id !== photoId)
+                }));
                 inspection.modifiedISO = nowISO();
               }
             });
@@ -3415,6 +3579,16 @@
       const removeFollowUp = event.target.closest(".remove-followup-btn");
       if (removeFollowUp) {
         removeFollowUp.closest(".followup-editor")?.remove();
+        scheduleInspectionAutosave();
+        return;
+      }
+
+      const removeLoad = event.target.closest(".remove-load-btn");
+      if (removeLoad) {
+        const identifier = removeLoad.closest(".load-editor")?.querySelector(".load-identifier")?.value.trim();
+        if (identifier && !window.confirm(`Remove vendor load ${identifier}?`)) return;
+        const current = collectLoads().filter((load) => load.id !== removeLoad.closest(".load-editor")?.dataset.loadId);
+        renderLoadEditors(current);
         scheduleInspectionAutosave();
         return;
       }
@@ -3618,6 +3792,3 @@
     initialize();
   }
 })();
-
-
-
