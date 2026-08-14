@@ -10,15 +10,15 @@ permissions:
 
 jobs:
   patch:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: agent/pwa-update-refresh-hotfix
-      - name: Patch versioned assets and service worker update behavior
-        shell: python
+
+      - name: Patch files
         run: |
+          python3 <<'PY'
           from pathlib import Path
 
           index = Path('index.html')
@@ -68,6 +68,7 @@ jobs:
           if old_install not in text:
               raise SystemExit('install handler pattern not found')
           text = text.replace(old_install, new_install, 1)
+
           old_fetch = '''self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
 
@@ -115,15 +116,17 @@ jobs:
           text = text.replace(old_fetch, new_fetch, 1)
           sw.write_text(text, encoding='utf-8')
 
-          test = Path('tests/pwa-update-refresh.test.cjs')
-          test.write_text('''const assert = require("node:assert/strict");\nconst fs = require("node:fs");\nconst index = fs.readFileSync("index.html", "utf8");\nconst app = fs.readFileSync("app.js", "utf8");\nconst sw = fs.readFileSync("service-worker.js", "utf8");\nassert.match(index, /active-trip-inspection-v55/, "HTML must request fresh versioned assets");\nassert.match(app, /updateViaCache: "none"/, "Service worker script updates must bypass HTTP cache");\nassert.match(app, /controllerchange/, "App should reload once when a new worker takes control");\nassert.match(sw, /cache: "reload"/, "Precache must bypass stale HTTP cache");\nassert.match(sw, /event\.request\.mode === "navigate"/, "Navigation should be network-first so new HTML can arrive");\nassert.match(sw, /mileage-logger-active-trip-inspection-v55/, "Cache name must change");\nconsole.log("PWA update refresh checks passed.");\n''', encoding='utf-8')
-      - name: Validate JavaScript and update tests
+          Path('tests/pwa-update-refresh.test.cjs').write_text('''const assert = require("node:assert/strict");\nconst fs = require("node:fs");\nconst index = fs.readFileSync("index.html", "utf8");\nconst app = fs.readFileSync("app.js", "utf8");\nconst sw = fs.readFileSync("service-worker.js", "utf8");\nassert.match(index, /active-trip-inspection-v55/);\nassert.match(app, /updateViaCache: "none"/);\nassert.match(app, /controllerchange/);\nassert.match(sw, /cache: "reload"/);\nassert.match(sw, /event\.request\.mode === "navigate"/);\nassert.match(sw, /mileage-logger-active-trip-inspection-v55/);\nconsole.log("PWA update refresh checks passed.");\n''', encoding='utf-8')
+          PY
+
+      - name: Validate
         run: |
           node --check app.js
           node --check inspections.js
           node --check service-worker.js
           node tests/active-trip-inspection.test.cjs
           node tests/pwa-update-refresh.test.cjs
+
       - name: Commit patch
         run: |
           git config user.name "github-actions[bot]"
