@@ -1,0 +1,221 @@
+name: Patch active-trip inspection workflow
+
+on:
+  push:
+    branches:
+      - agent/work-current-inspection-active-trip
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]' && !contains(github.event.head_commit.message, '[no-active-trip-patch]')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/work-current-inspection-active-trip
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Patch active-trip inspection workflow
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new, label):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly 1 match in {path}, found {count}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          # 1. Active trips are valid inspection trip contexts.
+          replace_once(
+              'inspections.js',
+              '''  function getTripById(state, tripId) {\n    if (!tripId) return null;\n    return state.trips.find((trip) => trip.id === tripId) || null;\n  }\n''',
+              '''  function getTripById(state, tripId) {\n    if (!tripId) return null;\n    if (state.activeTrip?.id === tripId) return state.activeTrip;\n    return state.trips.find((trip) => trip.id === tripId) || null;\n  }\n\n  function isActiveTrip(state, trip) {\n    return Boolean(trip?.id && state.activeTrip?.id === trip.id);\n  }\n\n  function inspectionTrips(state) {\n    const trips = [...state.trips];\n    if (state.activeTrip?.id && !trips.some((trip) => trip.id === state.activeTrip.id)) {\n      trips.unshift(state.activeTrip);\n    }\n    return trips;\n  }\n''',
+              'active getTripById'
+          )
+
+          # 2. Snapshots explicitly identify an in-progress trip.
+          replace_once(
+              'inspections.js',
+              '''  function tripSnapshot(trip) {\n    if (!trip) return null;\n    return {\n      tripId: trip.id,\n''',
+              '''  function tripSnapshot(trip) {\n    if (!trip) return null;\n    const inProgress = !trip.endISO && !trip.endTime && (trip.endOdometer === undefined || trip.endOdometer === "");\n    return {\n      tripId: trip.id,\n      inProgress,\n''',
+              'trip snapshot in-progress flag'
+          )
+
+          # 3. Vendor workspace includes the current active trip.
+          replace_once(
+              'inspections.js',
+              '''  function workspaceTripsForVendor(state, vendor) {\n    if (!vendor) return [];\n    return [...state.trips]\n      .filter((trip) => {\n        if (sameLocation(trip.vendor, vendor)) return true;\n        return state.settings.inspections.some((inspection) => (\n          inspection.tripId === trip.id\n          && (sameLocation(inspection.inspectionLocation || inspection.vendor, vendor)\n            || sameLocation(inspection.reportingVendor, vendor))\n        ));\n      })\n      .sort((a, b) => String(b.endISO || b.date || "").localeCompare(String(a.endISO || a.date || "")));\n  }\n''',
+              '''  function workspaceTripsForVendor(state, vendor) {\n    if (!vendor) return [];\n    return inspectionTrips(state)\n      .filter((trip) => {\n        if (sameLocation(trip.vendor, vendor)) return true;\n        return state.settings.inspections.some((inspection) => (\n          inspection.tripId === trip.id\n          && (sameLocation(inspection.inspectionLocation || inspection.vendor, vendor)\n            || sameLocation(inspection.reportingVendor, vendor))\n        ));\n      })\n      .sort((a, b) => String(b.endISO || b.startISO || b.date || "").localeCompare(String(a.endISO || a.startISO || a.date || "")));\n  }\n''',
+              'workspace active trip list'
+          )
+          replace_once(
+              'inspections.js',
+              '''    state.trips.forEach((trip) => {\n      if (trip.vendor) vendors.add(trip.vendor);\n    });\n''',
+              '''    inspectionTrips(state).forEach((trip) => {\n      if (trip.vendor) vendors.add(trip.vendor);\n    });\n''',
+              'workspace active vendor'
+          )
+
+          # 4. Visit selector and current context clearly show the active trip.
+          replace_once(
+              'inspections.js',
+              '''    const selectedTrip = getTripById(state, selectedTripId);\n    visitSelect.innerHTML = `<option value=""${standaloneSelected ? " selected" : ""}>Standalone / no mileage trip</option>${visits.map((trip) => `<option value="${escapeHTML(trip.id)}"${trip.id === selectedTripId ? " selected" : ""}>${escapeHTML(trip.date || "Saved visit")} — ${escapeHTML(trip.purpose || "Visit")} — ${escapeHTML(formatMiles(trip.miles))}</option>`).join("")}`;\n''',
+              '''    const selectedTrip = getTripById(state, selectedTripId);\n    const selectedTripIsActive = isActiveTrip(state, selectedTrip);\n    visitSelect.innerHTML = `<option value=""${standaloneSelected ? " selected" : ""}>Standalone / no mileage trip</option>${visits.map((trip) => {\n      const active = isActiveTrip(state, trip);\n      const label = active\n        ? `ACTIVE TRIP — ${trip.date || "Today"} — ${trip.purpose || "Visit"} — in progress`\n        : `${trip.date || "Saved visit"} — ${trip.purpose || "Visit"} — ${formatMiles(trip.miles)}`;\n      return `<option value="${escapeHTML(trip.id)}"${trip.id === selectedTripId ? " selected" : ""}>${escapeHTML(label)}</option>`;\n    }).join("")}`;\n''',
+              'active visit selector label'
+          )
+          replace_once(
+              'inspections.js',
+              '''      <small>${contextJob ? `${escapeHTML(contextJob.aj)} — ${escapeHTML(contextJob.projectName)}` : "No Active Job selected"}${selectedTrip ? ` • Mileage counted once: ${escapeHTML(formatMiles(selectedTrip.miles))}` : " • No trip mileage attached"}</small>`;\n''',
+              '''      <small>${contextJob ? `${escapeHTML(contextJob.aj)} — ${escapeHTML(contextJob.projectName)}` : "No Active Job selected"}${selectedTrip ? (selectedTripIsActive ? " • Active trip in progress — mileage finalizes at End Trip" : ` • Mileage counted once: ${escapeHTML(formatMiles(selectedTrip.miles))}`) : " • No trip mileage attached"}</small>`;\n''',
+              'active context mileage label'
+          )
+
+          # 5. Active visit summary does not pretend mileage/end-time are final.
+          replace_once(
+              'inspections.js',
+              '''    if (selectedTrip) {\n      const startMap = mapLink(selectedTrip.startLocation, "Trip Start");\n      const endMap = mapLink(selectedTrip.endLocation, "Trip End");\n      summary.innerHTML = `\n        <div class="visit-summary-grid">\n          <div><span>Date / time</span><strong>${escapeHTML(selectedTrip.date || "—")}<br>${escapeHTML(selectedTrip.startTime || "—")}–${escapeHTML(selectedTrip.endTime || "—")}</strong></div>\n          <div><span>Mileage</span><strong>${escapeHTML(formatMiles(selectedTrip.miles))}</strong><small>Counted once for this visit</small></div>\n          <div><span>Client / project</span><strong>${escapeHTML(selectedTrip.customer || "—")}<br>${escapeHTML(selectedTrip.projectNumber || "—")}</strong></div>\n          <div><span>Purpose</span><strong>${escapeHTML(selectedTrip.purpose || "—")}</strong></div>\n        </div>\n        <div class="form-actions wrap">\n          <button class="button button-secondary button-small" type="button" data-edit-workspace-trip="${escapeHTML(selectedTrip.id)}">Edit Trip &amp; Photos</button>\n          ${startMap ? `<a class="button button-secondary button-small" href="${startMap}" target="_blank" rel="noopener">Start Map</a>` : ""}\n          ${endMap ? `<a class="button button-secondary button-small" href="${endMap}" target="_blank" rel="noopener">End Map</a>` : ""}\n        </div>`;\n''',
+              '''    if (selectedTrip) {\n      const startMap = mapLink(selectedTrip.startLocation, "Trip Start");\n      const endMap = mapLink(selectedTrip.endLocation, "Trip End");\n      summary.innerHTML = `\n        <div class="visit-summary-grid">\n          <div><span>Date / time</span><strong>${escapeHTML(selectedTrip.date || "—")}<br>${escapeHTML(selectedTrip.startTime || "—")}–${selectedTripIsActive ? "In progress" : escapeHTML(selectedTrip.endTime || "—")}</strong></div>\n          <div><span>Mileage</span><strong>${selectedTripIsActive ? "In progress" : escapeHTML(formatMiles(selectedTrip.miles))}</strong><small>${selectedTripIsActive ? "Finalizes when End Trip is saved" : "Counted once for this visit"}</small></div>\n          <div><span>Client / project</span><strong>${escapeHTML(selectedTrip.customer || "—")}<br>${escapeHTML(selectedTrip.projectNumber || "—")}</strong></div>\n          <div><span>Purpose</span><strong>${escapeHTML(selectedTrip.purpose || "—")}</strong></div>\n        </div>\n        <div class="form-actions wrap">\n          ${selectedTripIsActive ? `<span class="pill active">ACTIVE TRIP — INSPECTION WORK AVAILABLE</span>` : `<button class="button button-secondary button-small" type="button" data-edit-workspace-trip="${escapeHTML(selectedTrip.id)}">Edit Trip &amp; Photos</button>`}\n          ${startMap ? `<a class="button button-secondary button-small" href="${startMap}" target="_blank" rel="noopener">Start Map</a>` : ""}\n          ${endMap ? `<a class="button button-secondary button-small" href="${endMap}" target="_blank" rel="noopener">End Map</a>` : ""}\n        </div>`;\n''',
+              'active visit summary'
+          )
+
+          # 6. Matching Active Jobs can come from the trip's S&B/project number when the inspection occurs at a new subvendor.
+          replace_once(
+              'inspections.js',
+              '''    const jobs = ACTIVE_JOBS\n      .filter((job) => job.openClosed === "Open")\n      .filter((job) => selectedVendor && activeJobLocations(state, job).has(selectedVendor));\n''',
+              '''    const openJobs = ACTIVE_JOBS.filter((job) => job.openClosed === "Open");\n    const matchedJobs = openJobs.filter((job) => selectedVendor && (\n      activeJobLocations(state, job).has(selectedVendor)\n      || (selectedTrip?.projectNumber && sameLocation(job.inspectionNo, selectedTrip.projectNumber))\n    ));\n    const jobs = matchedJobs.length || !selectedTripIsActive ? matchedJobs : openJobs;\n''',
+              'active trip AJ matching'
+          )
+
+          # 7. Put the active trip at the top of every inspection trip selector.
+          replace_once(
+              'inspections.js',
+              '''  function renderTripOptions(state, selectedTripId) {\n    const sortedTrips = [...state.trips].sort((a, b) => String(b.endISO || "").localeCompare(String(a.endISO || "")));\n    return [\n      `<option value="">Standalone inspection — no mileage trip</option>`,\n      ...sortedTrips.map((trip) => {\n        const label = [trip.date, trip.vendor, trip.projectNumber, formatMiles(trip.miles)].filter(Boolean).join(" • ");\n        return `<option value="${escapeHTML(trip.id)}"${trip.id === selectedTripId ? " selected" : ""}>${escapeHTML(label)}</option>`;\n      })\n    ].join("");\n  }\n''',
+              '''  function renderTripOptions(state, selectedTripId) {\n    const sortedTrips = inspectionTrips(state).sort((a, b) => String(b.endISO || b.startISO || "").localeCompare(String(a.endISO || a.startISO || "")));\n    return [\n      `<option value="">Standalone inspection — no mileage trip</option>`,\n      ...sortedTrips.map((trip) => {\n        const active = isActiveTrip(state, trip);\n        const label = active\n          ? ["ACTIVE TRIP", trip.date, trip.vendor, trip.projectNumber, "in progress"].filter(Boolean).join(" • ")\n          : [trip.date, trip.vendor, trip.projectNumber, formatMiles(trip.miles)].filter(Boolean).join(" • ");\n        return `<option value="${escapeHTML(trip.id)}"${trip.id === selectedTripId ? " selected" : ""}>${escapeHTML(label)}</option>`;\n      })\n    ].join("");\n  }\n''',
+              'active inspection trip options'
+          )
+
+          # 8. Active trip summary inside the inspection form is explicit.
+          replace_once(
+              'inspections.js',
+              '''    box.innerHTML = `\n      <strong>Linked mileage: ${formatMiles(snapshot.miles)}</strong>\n      ${snapshot.gpsRouteMiles ? ` • GPS ${formatMiles(snapshot.gpsRouteMiles)}` : ""}<br>\n      <small>${escapeHTML(snapshot.date || "")} ${escapeHTML(snapshot.startTime || "")}–${escapeHTML(snapshot.endTime || "")}\n      ${snapshot.staGenerated ? ` • STA ${escapeHTML(snapshot.staFileName || "generated")}` : ""}</small>\n      ${(startMap || endMap) ? `<div class="map-links">${startMap ? `<a href="${startMap}" target="_blank" rel="noopener">Start map</a>` : ""}${endMap ? `<a href="${endMap}" target="_blank" rel="noopener">End map</a>` : ""}</div>` : ""}\n    `;\n''',
+              '''    box.innerHTML = `\n      <strong>${snapshot.inProgress ? "Active trip linked — mileage still in progress" : `Linked mileage: ${formatMiles(snapshot.miles)}`}</strong>\n      ${snapshot.gpsRouteMiles ? ` • GPS ${formatMiles(snapshot.gpsRouteMiles)}` : ""}<br>\n      <small>${escapeHTML(snapshot.date || "")} ${escapeHTML(snapshot.startTime || "")}–${snapshot.inProgress ? "In progress" : escapeHTML(snapshot.endTime || "")}\n      ${snapshot.staGenerated ? ` • STA ${escapeHTML(snapshot.staFileName || "generated")}` : ""}</small>\n      ${(startMap || endMap) ? `<div class="map-links">${startMap ? `<a href="${startMap}" target="_blank" rel="noopener">Start map</a>` : ""}${endMap ? `<a href="${endMap}" target="_blank" rel="noopener">End map</a>` : ""}</div>` : ""}\n    `;\n''',
+              'active linked trip summary'
+          )
+
+          # 9. Inspection cards do not show a fake 0.0 miles while the trip is active.
+          replace_once(
+              'inspections.js',
+              '''            <span><strong>Mileage:</strong> ${snapshot ? formatMiles(snapshot.miles) : "Standalone"}</span>\n''',
+              '''            <span><strong>Mileage:</strong> ${snapshot ? (snapshot.inProgress ? "In progress" : formatMiles(snapshot.miles)) : "Standalone"}</span>\n''',
+              'active inspection card mileage'
+          )
+
+          # 10. Add the primary Work Current Inspection control and demote old-trip reminders while driving/inspecting.
+          replace_once(
+              'inspections.js',
+              '''  function hideInspectionSection() {\n    $("inspectionSection")?.classList.add("hidden");\n    closeInspectionForm();\n  }\n\n  function renderPrompt(state) {\n''',
+              '''  function hideInspectionSection() {\n    $("inspectionSection")?.classList.add("hidden");\n    closeInspectionForm();\n  }\n\n  function renderActiveTripInspectionAction(state) {\n    const details = $("activeDetails");\n    if (!details) return;\n    const existing = $("workCurrentInspectionBtn");\n    if (!state.activeTrip) {\n      existing?.remove();\n      return;\n    }\n    const controls = details.querySelector(".active-controls");\n    if (!controls || existing) return;\n    const button = document.createElement("button");\n    button.id = "workCurrentInspectionBtn";\n    button.className = "button inspection-button button-small";\n    button.type = "button";\n    button.textContent = "Work Current Inspection";\n    button.title = "Open this active mileage trip as the current inspection visit without ending the trip.";\n    controls.insertAdjacentElement("afterbegin", button);\n  }\n\n  function renderPrompt(state) {\n''',
+              'work current inspection action helper'
+          )
+          replace_once(
+              'inspections.js',
+              '''    card.innerHTML = `\n      <p class="eyebrow">Completed trip ready</p>\n      <h2>Create an inspection record?</h2>\n      <p>\n        <strong>${escapeHTML(candidate.vendor || "Destination")}</strong>\n        ${candidate.projectNumber ? `• ${escapeHTML(candidate.projectNumber)}` : ""}<br>\n        ${escapeHTML(candidate.date || "")}${candidate.miles !== undefined ? ` • ${formatMiles(candidate.miles)}` : ""}\n      </p>\n      <div class="inspection-prompt-actions">\n        <button class="button inspection-button" type="button" data-create-inspection-trip="${escapeHTML(candidate.id)}">Create Inspection Record</button>\n        <button class="button button-secondary" type="button" data-ignore-inspection-trip="${escapeHTML(candidate.id)}">Not an Inspection</button>\n      </div>\n    `;\n    card.classList.remove("hidden");\n''',
+              '''    const currentTripActive = Boolean(state.activeTrip);\n    card.classList.toggle("current-trip-secondary", currentTripActive);\n    card.innerHTML = `\n      <p class="eyebrow">${currentTripActive ? "Past trip needs review" : "Completed trip ready"}</p>\n      <h2>${currentTripActive ? "Review the earlier trip when ready" : "Create an inspection record?"}</h2>\n      <p>\n        <strong>${escapeHTML(candidate.vendor || "Destination")}</strong>\n        ${candidate.projectNumber ? `• ${escapeHTML(candidate.projectNumber)}` : ""}<br>\n        ${escapeHTML(candidate.date || "")}${candidate.miles !== undefined ? ` • ${formatMiles(candidate.miles)}` : ""}\n      </p>\n      <div class="inspection-prompt-actions">\n        <button class="button ${currentTripActive ? "button-secondary" : "inspection-button"}" type="button" data-create-inspection-trip="${escapeHTML(candidate.id)}">${currentTripActive ? "Review Past Trip" : "Create Inspection Record"}</button>\n        <button class="button button-secondary" type="button" data-ignore-inspection-trip="${escapeHTML(candidate.id)}">Not an Inspection</button>\n      </div>\n    `;\n    card.classList.remove("hidden");\n''',
+              'demote past trip prompt'
+          )
+          replace_once(
+              'inspections.js',
+              '''      .inspection-prompt-card { border: 2px solid var(--info); }\n      .inspection-prompt-card .inspection-prompt-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }\n''',
+              '''      .inspection-prompt-card { border: 2px solid var(--info); }\n      .inspection-prompt-card.current-trip-secondary { border-width: 1px; border-color: var(--line); background: color-mix(in srgb, var(--card), var(--bg) 24%); }\n      .inspection-prompt-card .inspection-prompt-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }\n''',
+              'secondary prompt style'
+          )
+
+          # 11. Keep the active-trip button alive even when the main mileage UI rerenders.
+          replace_once(
+              'inspections.js',
+              '''  function refreshFromState(force = false) {\n    if (!$('inspectionSection')) return;\n    const state = readState();\n    const signature = JSON.stringify({\n      trips: state.trips.map((trip) => [trip.id, trip.endISO, trip.miles, trip.notes, (trip.photos || []).map((photo) => [photo.id, photo.caption])]),\n''',
+              '''  function refreshFromState(force = false) {\n    if (!$('inspectionSection')) return;\n    const state = readState();\n    renderActiveTripInspectionAction(state);\n    const signature = JSON.stringify({\n      activeTrip: state.activeTrip ? [state.activeTrip.id, state.activeTrip.startISO, state.activeTrip.vendor, state.activeTrip.projectNumber, state.activeTrip.purpose, state.activeTrip.notes, (state.activeTrip.photos || []).map((photo) => [photo.id, photo.caption])] : null,\n      trips: state.trips.map((trip) => [trip.id, trip.endISO, trip.miles, trip.notes, (trip.photos || []).map((photo) => [photo.id, photo.caption])]),\n''',
+              'active trip refresh signature'
+          )
+
+          # 12. Work Current Inspection opens the live trip directly in the Visit workspace.
+          replace_once(
+              'inspections.js',
+              '''    document.addEventListener("click", async (event) => {\n      const activeJobButton = event.target.closest("[data-work-active-job]");\n''',
+              '''    document.addEventListener("click", async (event) => {\n      if (event.target.closest("#workCurrentInspectionBtn")) {\n        const state = readState();\n        const trip = state.activeTrip;\n        if (!trip) {\n          window.alert("There is no active trip to inspect right now.");\n          return;\n        }\n        state.settings.activeJobsWorkspaceTripId = trip.id;\n        state.settings.activeJobsWorkspaceVendor = trip.vendor || state.settings.activeJobsWorkspaceVendor || "";\n        writeState(state);\n        showInspectionSection(false, trip.id);\n        return;\n      }\n\n      const activeJobButton = event.target.closest("[data-work-active-job]");\n''',
+              'work current inspection click'
+          )
+
+          # 13. Finalize linked inspection snapshots before the required trip backup is built.
+          replace_once(
+              'inspections.js',
+              '''    window.addEventListener("storage", () => refreshFromState(true));\n    window.addEventListener("mileage:trip-completed", (event) => {\n      promptForCompletedTrip(event.detail?.tripId || "", event.detail?.backupConfirmed);\n    });\n  }\n\n  function promptForCompletedTrip(tripId, backupConfirmed) {\n''',
+              '''    window.addEventListener("storage", () => refreshFromState(true));\n    window.addEventListener("mileage:trip-finalized", (event) => {\n      finalizeLinkedTrip(event.detail?.tripId || "");\n    });\n    window.addEventListener("mileage:trip-completed", (event) => {\n      promptForCompletedTrip(event.detail?.tripId || "", event.detail?.backupConfirmed);\n    });\n  }\n\n  function finalizeLinkedTrip(tripId) {\n    if (!tripId) return 0;\n    const state = readState();\n    const trip = state.trips.find((item) => item.id === tripId);\n    if (!trip) return 0;\n    const linked = state.settings.inspections.filter((inspection) => inspection.tripId === tripId);\n    if (!linked.length) return 0;\n    const snapshot = tripSnapshot(trip);\n    linked.forEach((inspection) => {\n      inspection.tripSnapshot = { ...snapshot };\n    });\n    writeState(state);\n    return linked.length;\n  }\n\n  function promptForCompletedTrip(tripId, backupConfirmed) {\n''',
+              'trip finalization listener'
+          )
+          replace_once(
+              'inspections.js',
+              '''      const state = readState();\n      const trip = getTripById(state, tripId);\n      if (!trip) return;\n\n      const createInspection = window.confirm(\n        `Trip saved and backed up.\\n\\nCreate an inspection record for ${trip.vendor || "this trip"}?`\n      );\n      if (createInspection) showInspectionSection(true, tripId);\n''',
+              '''      const state = readState();\n      const trip = getTripById(state, tripId);\n      if (!trip) return;\n      const linked = state.settings.inspections.filter((inspection) => inspection.tripId === tripId);\n      if (linked.length) {\n        showInspectionToast(`Trip finalized and linked to ${linked.length} inspection record${linked.length === 1 ? "" : "s"}.`);\n        return;\n      }\n\n      const createInspection = window.confirm(\n        `Trip saved and backed up.\\n\\nCreate an inspection record for ${trip.vendor || "this trip"}?`\n      );\n      if (createInspection) showInspectionSection(true, tripId);\n''',
+              'avoid duplicate completed-trip prompt'
+          )
+
+          # 14. Main mileage app tells inspection layer to finalize derived trip snapshots before backup.
+          replace_once(
+              'app.js',
+              '''    saveState();\n    renderAll();\n    hidePrimaryPanels();\n\n    const difference = completedTrip.gpsRouteMiles > 0\n''',
+              '''    saveState();\n    renderAll();\n    hidePrimaryPanels();\n\n    window.dispatchEvent(new CustomEvent("mileage:trip-finalized", {\n      detail: { tripId: completedTrip.id }\n    }));\n\n    const difference = completedTrip.gpsRouteMiles > 0\n''',
+              'pre-backup trip finalization event'
+          )
+
+          # 15. Refresh the offline cache so iPhone/PWA testing receives the fix.
+          replace_once(
+              'service-worker.js',
+              'const CACHE_NAME = "mileage-logger-workflow-upgrades-v53";',
+              'const CACHE_NAME = "mileage-logger-active-trip-inspection-v54";',
+              'service worker cache version'
+          )
+
+          # Focused regression test for the new behavior.
+          Path('tests/active-trip-inspection.test.cjs').write_text(r'''const assert = require("node:assert/strict");
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const root = path.join(__dirname, "..");
+          const inspections = fs.readFileSync(path.join(root, "inspections.js"), "utf8");
+          const app = fs.readFileSync(path.join(root, "app.js"), "utf8");
+          const serviceWorker = fs.readFileSync(path.join(root, "service-worker.js"), "utf8");
+
+          assert.match(inspections, /state\.activeTrip\?\.id === tripId/, "Active trip must resolve as an inspection trip");
+          assert.match(inspections, /Work Current Inspection/, "Active trip card must offer Work Current Inspection");
+          assert.match(inspections, /ACTIVE TRIP — .*in progress/s, "Visit selector must identify the active trip");
+          assert.match(inspections, /selectedTrip\?\.projectNumber.*job\.inspectionNo/s, "Active job matching must support a new subvendor via project number");
+          assert.match(inspections, /mileage:trip-finalized/, "Inspection layer must finalize trip snapshots before backup");
+          assert.match(inspections, /Trip finalized and linked to/, "Completed trip must not prompt for a duplicate inspection when already linked");
+          assert.match(app, /mileage:trip-finalized/, "Mileage app must dispatch finalization before backup");
+          assert.match(serviceWorker, /mileage-logger-active-trip-inspection-v54/, "Offline cache must refresh for the active-trip inspection fix");
+
+          console.log("Active-trip inspection workflow checks passed.");
+          ''', encoding='utf-8')
+          PY
+      - name: Verify JavaScript and focused regression
+        run: |
+          node --check app.js
+          node --check inspections.js
+          node --check service-worker.js
+          node tests/active-trip-inspection.test.cjs
+      - name: Commit patched workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.js inspections.js service-worker.js tests/active-trip-inspection.test.cjs
+          git commit -m "Allow inspections during an active mileage trip" || exit 0
+          git push origin HEAD:agent/work-current-inspection-active-trip
