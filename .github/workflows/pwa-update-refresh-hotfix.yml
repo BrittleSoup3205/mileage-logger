@@ -1,0 +1,133 @@
+name: Patch PWA update refresh
+
+on:
+  push:
+    branches:
+      - agent/pwa-update-refresh-hotfix
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/pwa-update-refresh-hotfix
+      - name: Patch versioned assets and service worker update behavior
+        shell: python
+        run: |
+          from pathlib import Path
+
+          index = Path('index.html')
+          text = index.read_text(encoding='utf-8')
+          text = text.replace('workflow-upgrades-2', 'active-trip-inspection-v55')
+          index.write_text(text, encoding='utf-8')
+
+          app = Path('app.js')
+          text = app.read_text(encoding='utf-8')
+          old = 'navigator.serviceWorker.register("./service-worker.js").catch((error) => {'
+          new = '''navigator.serviceWorker.addEventListener("controllerchange", () => {
+        const reloadKey = "mileage_logger_sw_controller_reloaded";
+        if (sessionStorage.getItem(reloadKey)) return;
+        sessionStorage.setItem(reloadKey, "1");
+        window.location.reload();
+      });
+      navigator.serviceWorker.register("./service-worker.js", { updateViaCache: "none" })
+        .then((registration) => registration.update())
+        .catch((error) => {'''
+          if old not in text:
+              raise SystemExit('service worker registration pattern not found')
+          text = text.replace(old, new, 1)
+          app.write_text(text, encoding='utf-8')
+
+          sw = Path('service-worker.js')
+          text = sw.read_text(encoding='utf-8')
+          text = text.replace('mileage-logger-active-trip-inspection-v54', 'mileage-logger-active-trip-inspection-v55')
+          text = text.replace('workflow-upgrades-2', 'active-trip-inspection-v55')
+          old_install = '''self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => cache.addAll(APP_FILES))
+      .then(() => self.skipWaiting())
+  );
+});'''
+          new_install = '''self.addEventListener("install", (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => Promise.all(APP_FILES.map(async (url) => {
+        const response = await fetch(url, { cache: "reload" });
+        if (!response.ok) throw new Error(`Could not refresh ${url}: ${response.status}`);
+        await cache.put(url, response);
+      })))
+      .then(() => self.skipWaiting())
+  );
+});'''
+          if old_install not in text:
+              raise SystemExit('install handler pattern not found')
+          text = text.replace(old_install, new_install, 1)
+          old_fetch = '''self.addEventListener("fetch", (event) => {
+  if (event.request.method !== "GET") return;
+
+  event.respondWith(
+    caches.match(event.request).then((cached) => {
+      if (cached) return cached;
+
+      return fetch(event.request).then((response) => {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        return response;
+      }).catch(() => caches.match("./index.html"));
+    })
+  );
+});'''
+          new_fetch = '''self.addEventListener("fetch", (event) => {
+  if (event.request.method !== "GET") return;
+
+  if (event.request.mode === "navigate") {
+    event.respondWith(
+      fetch(event.request, { cache: "no-store" })
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put("./", copy));
+          return response;
+        })
+        .catch(() => caches.match("./"))
+    );
+    return;
+  }
+
+  event.respondWith(
+    caches.match(event.request).then((cached) => {
+      if (cached) return cached;
+      return fetch(event.request).then((response) => {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+        return response;
+      });
+    })
+  );
+});'''
+          if old_fetch not in text:
+              raise SystemExit('fetch handler pattern not found')
+          text = text.replace(old_fetch, new_fetch, 1)
+          sw.write_text(text, encoding='utf-8')
+
+          test = Path('tests/pwa-update-refresh.test.cjs')
+          test.write_text('''const assert = require("node:assert/strict");\nconst fs = require("node:fs");\nconst index = fs.readFileSync("index.html", "utf8");\nconst app = fs.readFileSync("app.js", "utf8");\nconst sw = fs.readFileSync("service-worker.js", "utf8");\nassert.match(index, /active-trip-inspection-v55/, "HTML must request fresh versioned assets");\nassert.match(app, /updateViaCache: "none"/, "Service worker script updates must bypass HTTP cache");\nassert.match(app, /controllerchange/, "App should reload once when a new worker takes control");\nassert.match(sw, /cache: "reload"/, "Precache must bypass stale HTTP cache");\nassert.match(sw, /event\.request\.mode === "navigate"/, "Navigation should be network-first so new HTML can arrive");\nassert.match(sw, /mileage-logger-active-trip-inspection-v55/, "Cache name must change");\nconsole.log("PWA update refresh checks passed.");\n''', encoding='utf-8')
+      - name: Validate JavaScript and update tests
+        run: |
+          node --check app.js
+          node --check inspections.js
+          node --check service-worker.js
+          node tests/active-trip-inspection.test.cjs
+          node tests/pwa-update-refresh.test.cjs
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html app.js service-worker.js tests/pwa-update-refresh.test.cjs
+          git commit -m "Make PWA updates refresh reliably on iPhone"
+          git push origin HEAD:agent/pwa-update-refresh-hotfix
