@@ -11,7 +11,7 @@
   <title>Mileage Logger GPS</title>
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=visit-workspace-5">
+  <link rel="stylesheet" href="./styles.css?v=workflow-upgrades-2">
 </head>
 <body>
   <header class="topbar">
@@ -93,7 +93,7 @@
       </section>
 
       <p class="privacy-note compact-note">
-        The full data backup contains mileage records, inspections, GPS data, settings, a mileage-log CSV spreadsheet, and photo filenames and descriptions, but not the image files.
+        The full data backup contains mileage records, inspections, vendor loads, GPS data, Concur and timesheet history, settings, mileage/Concur/timesheet CSV spreadsheets, and photo filenames and descriptions, but not the image files.
         Retain the original images in your iPhone Photos library; app backups do not contain actual photos.
         Choose <strong>Save to Files</strong>, select an iCloud Drive folder, tap <strong>Save</strong>, then confirm the save in the app.
         A new trip is blocked only until the prior data backup is confirmed.
@@ -431,7 +431,7 @@
 
       <div class="required-backup-note">
         <strong>Backup rule:</strong> A small full data ZIP is required after every completed trip or record change.
-        The data ZIP includes a mileage-log CSV spreadsheet and keeps photo filenames, descriptions, and record links, but not the actual images. Retain originals in iPhone Photos.
+        The data ZIP includes mileage, Concur, and timesheet CSV spreadsheets and keeps photo filenames, descriptions, and record links, but not the actual images. Retain originals in iPhone Photos.
         Older combined ZIP and JSON backups can still be restored.
         This rule cannot be turned off in this build because the mileage record is the primary purpose of the app.
       </div>
@@ -567,8 +567,9 @@
   <script src="./vendor/fflate.min.js"></script>
   <script src="./media-store.js?v=visit-workspace-5"></script>
   <script src="./active-jobs-data.js?v=visit-workspace-5"></script>
-  <script src="./app.js?v=active-jobs-save-2"></script>
-  <script src="./inspections.js?v=visit-workspace-5"></script>
+  <script src="./workflow-data.js?v=workflow-upgrades-2"></script>
+  <script src="./app.js?v=workflow-upgrades-2"></script>
+  <script src="./inspections.js?v=workflow-upgrades-2"></script>
+  <script src="./workflow-queues.js?v=workflow-upgrades-2"></script>
 </body>
 </html>
-

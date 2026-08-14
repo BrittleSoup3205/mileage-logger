@@ -1,10 +1,12 @@
-const CACHE_NAME = "mileage-logger-active-jobs-save-v51";
+const CACHE_NAME = "mileage-logger-workflow-upgrades-v53";
 const APP_FILES = [
   "./",
-  "./index.html?v=active-jobs-save-2",
-  "./styles.css?v=visit-workspace-5",
-  "./app.js?v=active-jobs-save-2",
-  "./inspections.js?v=visit-workspace-5",
+  "./index.html?v=workflow-upgrades-2",
+  "./styles.css?v=workflow-upgrades-2",
+  "./workflow-data.js?v=workflow-upgrades-2",
+  "./app.js?v=workflow-upgrades-2",
+  "./inspections.js?v=workflow-upgrades-2",
+  "./workflow-queues.js?v=workflow-upgrades-2",
   "./media-store.js?v=visit-workspace-5",
   "./active-jobs-data.js?v=visit-workspace-5",
   "./vendor/pdf-lib.min.js",
@@ -47,4 +49,3 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
-

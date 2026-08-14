@@ -59,17 +59,18 @@
   let preparedActiveJobsActivity = null;
 
   function defaultState() {
-    return {
+    const base = {
       activeTrip: null,
       trips: [],
       lastOdometer: "",
       backup: { ...DEFAULT_BACKUP_STATE },
       settings: { ...DEFAULT_SETTINGS, vendorLocations: [] }
     };
+    return window.MileageWorkflowData?.migrateState(base) || base;
   }
 
   function sanitizeState(parsed) {
-    return {
+    const sanitized = {
       activeTrip: parsed?.activeTrip || null,
       trips: Array.isArray(parsed?.trips) ? parsed.trips : [],
       lastOdometer: parsed?.lastOdometer ?? "",
@@ -83,8 +84,10 @@
         vendorLocations: Array.isArray(parsed?.settings?.vendorLocations)
           ? parsed.settings.vendorLocations
           : []
-      }
+      },
+      workflow: parsed?.workflow
     };
+    return window.MileageWorkflowData?.migrateState(sanitized) || sanitized;
   }
 
   function loadState() {
@@ -329,7 +332,7 @@
   }
 
   function hidePrimaryPanels() {
-    ["startSection", "endSection", "staSection", "logSection"].forEach((id) => {
+    ["startSection", "endSection", "staSection", "logSection", "inspectionSection", "workflowQueuesSection"].forEach((id) => {
       $(id).classList.add("hidden");
     });
   }
@@ -1656,14 +1659,14 @@
     const tripPhotos = tripPhotoMetadata();
     return {
       backupFormat: "MileageLoggerDataBackup",
-      backupVersion: 4,
+      backupVersion: 5,
       createdISO: new Date().toISOString(),
       tripCount: state.trips.length,
       photoCount: inspectionPhotos.length,
       tripPhotoCount: tripPhotos.length,
       photoReferenceCount: new Set([...inspectionPhotos, ...tripPhotos].map((photo) => photo.id)).size,
       photoManifest: inspectionPhotos,
-      note: "This data ZIP includes app-data.json plus a mileage-log.csv spreadsheet. It contains mileage data, inspection records, GPS data, settings, and photo filenames and descriptions. Actual image files are not included; retain the originals in iPhone Photos. The privately imported STA master is also excluded.",
+      note: "This data ZIP includes app-data.json plus mileage, Concur reimbursement, and weekly timesheet CSV spreadsheets. It contains mileage data, inspection records, vendor loads, GPS data, reimbursement history, timesheet entries, settings, and photo filenames and descriptions. Actual image files are not included; retain the originals in iPhone Photos. The privately imported STA master is also excluded.",
       appState: state
     };
   }
@@ -1685,6 +1688,10 @@
       "app-data.json": window.fflate.strToU8(JSON.stringify(buildBackupPackage(), null, 2)),
       "mileage-log.csv": window.fflate.strToU8(makeCSV())
     };
+    if (window.MileageWorkflowData) {
+      entries["concur-reimbursement.csv"] = window.fflate.strToU8(window.MileageWorkflowData.makeConcurCSV(state));
+      entries["weekly-timesheet.csv"] = window.fflate.strToU8(window.MileageWorkflowData.makeTimesheetCSV(state));
+    }
     return makePreparedZip(
       `Mileage_Logger_Data_Backup_${backupTimestamp()}_${state.trips.length}_trips.zip`,
       entries,
@@ -1755,6 +1762,8 @@
       <span>${summary.inspections} inspection record${summary.inspections === 1 ? "" : "s"}</span>
       <span>${summary.photoReferences} photo filename and description reference${summary.photoReferences === 1 ? "" : "s"}</span>
       <span>Mileage log spreadsheet included (mileage-log.csv)</span>
+      <span>Concur reimbursement spreadsheet included (concur-reimbursement.csv)</span>
+      <span>Weekly timesheet spreadsheet included (weekly-timesheet.csv)</span>
       <span>Actual image files are not included; retain originals in iPhone Photos</span>
       <span>Settings and saved lists</span>
       <span>File size: ${formatFileSize(summary.bytes)}</span>
@@ -2493,7 +2502,7 @@
       ? haversineMiles(state.activeTrip.startLocation, pendingEndLocation)
       : 0;
 
-    const completedTrip = {
+    let completedTrip = {
       ...state.activeTrip,
       endISO: now.iso,
       endTime: now.time,
@@ -2505,6 +2514,7 @@
       gpsRouteMiles: gpsRouteMiles > 0.05 ? gpsRouteMiles : 0,
       directGpsMiles
     };
+    completedTrip = window.MileageWorkflowData?.migrateTrip(completedTrip) || completedTrip;
 
     state.trips.push(completedTrip);
     state.lastOdometer = endOdometer;

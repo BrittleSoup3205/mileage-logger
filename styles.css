@@ -871,3 +871,93 @@ hr {
 .trip-photo-gallery small {
   color: var(--muted);
 }
+
+/* Workflow upgrades: repeatable loads, Concur queue, and weekly timesheets. */
+.load-editor-list,
+.workflow-entry-list,
+.timesheet-day-list {
+  display: grid;
+  gap: 12px;
+}
+
+.load-editor,
+.workflow-entry-card,
+.timesheet-day,
+.timesheet-entry {
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--card), var(--bg) 24%);
+}
+
+.load-editor-routine,
+.workflow-entry-heading,
+.workflow-settings-row,
+.workflow-batch-bar,
+.week-navigation,
+.timesheet-day-heading {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+}
+
+.load-editor-routine > label,
+.workflow-settings-row > label,
+.workflow-batch-bar > label,
+.week-navigation > label {
+  flex: 1 1 180px;
+}
+
+.load-editor-routine .remove-load-btn { margin-bottom: 1px; }
+.load-exception-details,
+.prior-load-details,
+.workflow-history-details,
+.manual-time-entry,
+.workflow-entry-card details,
+.timesheet-entry details { margin-top: 10px; }
+
+.load-photo-ids { min-height: 70px; }
+.prior-load-history { display: grid; gap: 8px; margin-top: 10px; }
+.prior-load-history article { padding: 10px; border-left: 3px solid var(--info); background: color-mix(in srgb, var(--info), transparent 95%); }
+.prior-load-history article > div { display: flex; justify-content: space-between; gap: 10px; }
+.prior-load-history p { margin: 6px 0 0; }
+.inspection-load-summary { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.inspection-load-summary span { padding: 7px 9px; border-radius: 9px; background: color-mix(in srgb, var(--info), transparent 93%); }
+
+.workflow-subsection { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); }
+.workflow-settings-row,
+.workflow-batch-bar,
+.week-navigation { flex-wrap: wrap; margin: 12px 0; }
+.workflow-select-all { display: flex; flex-direction: row; align-items: center; gap: 7px; }
+.workflow-select-all input,
+.concur-select { width: 20px; height: 20px; }
+.workflow-entry-heading { align-items: flex-start; justify-content: space-between; }
+.workflow-entry-heading > div:first-of-type { flex: 1; }
+.workflow-entry-heading h4,
+.timesheet-day-heading h4 { margin: 2px 0 4px; }
+.workflow-entry-heading small { color: var(--muted); }
+.workflow-estimate { display: block; margin-top: 8px; text-align: right; white-space: nowrap; }
+.workflow-context-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 7px; margin-top: 10px; font-size: .9rem; }
+.workflow-status-history { display: grid; gap: 4px; margin-top: 10px; padding: 9px; border-radius: 9px; background: color-mix(in srgb, var(--info), transparent 95%); }
+.workflow-week-summary { display: flex; justify-content: space-between; gap: 10px; padding: 12px; border-radius: 12px; background: color-mix(in srgb, var(--info), transparent 95%); }
+.workflow-warning { color: var(--warning); font-weight: 700; }
+.workflow-complete { color: var(--success); font-weight: 700; }
+.timesheet-day.incomplete { border-left: 4px solid var(--warning); }
+.timesheet-day-heading { justify-content: space-between; margin-bottom: 9px; }
+.timesheet-day-heading small { color: var(--muted); }
+.timesheet-entry + .timesheet-entry { margin-top: 9px; }
+.manual-time-entry { margin: 14px 0; padding: 12px; border: 1px solid var(--line); border-radius: 13px; }
+
+@media (max-width: 760px) {
+  .load-editor-routine,
+  .workflow-entry-heading,
+  .workflow-week-summary {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .load-editor-routine > label { width: 100%; }
+  .workflow-estimate { text-align: left; }
+  .workflow-batch-bar .button,
+  .workflow-settings-row .button,
+  .week-navigation .button { flex: 1 1 42%; }
+}
