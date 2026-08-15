@@ -16,4 +16,8 @@ assert.match(schema, /enable row level security/i, "Cloud tables must use row-le
 assert.match(schema, /auth\.uid\(\) = user_id/, "RLS must isolate each user's records");
 assert.match(schema, /mileage_sync_devices/, "Device heartbeat table must exist");
 
+assert.match(sync, /DEFAULT_PROJECT_URL/, "Cloud project should be preconfigured so users do not paste infrastructure settings");
+assert.match(sync, /DEFAULT_PUBLISHABLE_KEY/, "Only the public publishable key may be preconfigured in the client");
+assert.match(sync, /initialCloudBootstrap/, "A newly linked second device must prefer existing cloud state on its first synchronization");
+
 console.log("Multi-device sync regression checks passed.");

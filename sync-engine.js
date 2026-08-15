@@ -7,6 +7,8 @@
   const META_KEY = "mileage_logger_sync_meta_v1";
   const DEVICE_ID_KEY = "mileage_logger_sync_device_id_v1";
   const SYNC_INTERVAL_MS = 20000;
+  const DEFAULT_PROJECT_URL = "https://osvubxisjfplnljabvrn.supabase.co";
+  const DEFAULT_PUBLISHABLE_KEY = "sb_publishable_n3tp6B8y5abgPN1r7ITUYA_cMuE7AlP";
   const RECORD_TYPES = new Set(["active_trip", "trip", "inspection", "timesheet_entry", "timesheet_week", "preferences"]);
 
   let syncTimer = null;
@@ -71,9 +73,9 @@
   function loadConfig() {
     const config = readJSON(CONFIG_KEY, {});
     return {
-      enabled: Boolean(config.enabled),
-      projectUrl: String(config.projectUrl || "").trim().replace(/\/$/, ""),
-      publishableKey: String(config.publishableKey || "").trim(),
+      enabled: config.enabled === undefined ? true : Boolean(config.enabled),
+      projectUrl: String(config.projectUrl || DEFAULT_PROJECT_URL).trim().replace(/\/$/, ""),
+      publishableKey: String(config.publishableKey || DEFAULT_PUBLISHABLE_KEY).trim(),
       email: String(config.email || "").trim(),
       deviceLabel: String(config.deviceLabel || defaultDeviceLabel()).trim() || defaultDeviceLabel()
     };
@@ -447,6 +449,7 @@
       let localRecords = scanLocal(state, meta);
       const remoteRows = await fetchRemoteRecords();
       const remoteByKey = new Map(remoteRows.map((row) => [recordKey(row.record_type, row.record_id), row]));
+      const initialCloudBootstrap = !meta.lastSyncISO && remoteRows.length > 0;
       let remoteApplied = false;
 
       for (const remote of remoteRows) {
@@ -457,8 +460,9 @@
         const localMeta = meta.records[key];
         const localRecord = localRecords.get(key);
         const localHash = localRecord ? hashValue(localRecord.payload) : (localMeta?.tombstone ? "__deleted__" : "__missing__");
+        const contentDiffers = localHash !== remoteHash;
 
-        if (!localMeta) {
+        if (!localMeta || (initialCloudBootstrap && contentDiffers)) {
           applyRemoteRecord(state, remote);
           meta.records[key] = { hash: remoteHash, modifiedAt: remoteTime, syncedAt: remoteTime, tombstone: Boolean(remote.tombstone) };
           remoteApplied = true;
@@ -469,8 +473,6 @@
         const localSynced = Number(localMeta.syncedAt || 0);
         const localDirty = localModified > localSynced;
         const remoteChanged = remoteTime > localSynced;
-        const contentDiffers = localHash !== remoteHash;
-
         if (localDirty && remoteChanged && contentDiffers) {
           const remoteWins = remoteTime >= localModified;
           meta.conflicts.push({
