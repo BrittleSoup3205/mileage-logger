@@ -1,0 +1,83 @@
+name: Integrate multi-device sync files
+
+on:
+  push:
+    branches:
+      - agent/multi-device-sync
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/multi-device-sync
+
+      - name: Patch HTML and offline cache
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          index = Path('index.html')
+          text = index.read_text(encoding='utf-8')
+          css_tag = '<link rel="stylesheet" href="./multi-device.css?v=multi-device-1">'
+          if css_tag not in text:
+              marker = '<link rel="stylesheet" href="./styles.css?v=workflow-upgrades-2">'
+              if marker not in text:
+                  raise SystemExit('styles marker not found in index.html')
+              text = text.replace(marker, marker + '\n  ' + css_tag, 1)
+          script_tag = '<script src="./sync-engine.js?v=multi-device-1"></script>'
+          if script_tag not in text:
+              marker = '<script src="./workflow-queues.js?v=workflow-upgrades-2"></script>'
+              if marker not in text:
+                  raise SystemExit('workflow queue script marker not found in index.html')
+              text = text.replace(marker, marker + '\n  ' + script_tag, 1)
+          index.write_text(text, encoding='utf-8')
+
+          sw = Path('service-worker.js')
+          text = sw.read_text(encoding='utf-8')
+          import re
+          text = re.sub(r'const CACHE_NAME = "[^"]+";', 'const CACHE_NAME = "mileage-logger-multi-device-v56";', text, count=1)
+          css_asset = '  "./multi-device.css?v=multi-device-1",'
+          if css_asset not in text:
+              marker = '  "./styles.css?v=workflow-upgrades-2",'
+              if marker not in text:
+                  raise SystemExit('styles asset marker not found in service-worker.js')
+              text = text.replace(marker, marker + '\n' + css_asset, 1)
+          sync_asset = '  "./sync-engine.js?v=multi-device-1",'
+          if sync_asset not in text:
+              marker = '  "./workflow-queues.js?v=workflow-upgrades-2",'
+              if marker not in text:
+                  raise SystemExit('workflow queue asset marker not found in service-worker.js')
+              text = text.replace(marker, marker + '\n' + sync_asset, 1)
+          sw.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Validate current app and sync files
+        run: |
+          node --check app.js
+          node --check inspections.js
+          node --check workflow-data.js
+          node --check workflow-queues.js
+          node --check sync-engine.js
+          node --check service-worker.js
+          node tests/active-trip-inspection.test.cjs
+          node tests/workflow-data.test.cjs
+          node tests/backup-compatibility.test.cjs
+          node tests/multi-device-sync.test.cjs
+
+      - name: Commit integration patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html service-worker.js
+          if git diff --cached --quiet; then
+            echo "No integration patch needed"
+            exit 0
+          fi
+          git commit -m "Load multi-device sync in the PWA"
+          git push origin HEAD:agent/multi-device-sync
