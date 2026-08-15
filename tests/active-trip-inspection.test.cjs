@@ -13,6 +13,6 @@ assert.match(inspections, /selectedTrip\?\.projectNumber.*job\.inspectionNo/s, "
 assert.match(inspections, /mileage:trip-finalized/, "Inspection layer must finalize trip snapshots before backup");
 assert.match(inspections, /Trip finalized and linked to/, "Completed trip must not prompt for a duplicate inspection when already linked");
 assert.match(app, /mileage:trip-finalized/, "Mileage app must dispatch finalization before backup");
-assert.match(serviceWorker, /mileage-logger-(?:active-trip-inspection-v54|multi-device-v56)/, "Offline cache must include the active-trip inspection fix or a newer release");
+assert.match(serviceWorker, /mileage-logger-(?:active-trip-inspection-v54|multi-device-v56|multi-device-bootstrap-v57)/, "Offline cache must include the active-trip inspection fix or a newer release");
 
 console.log("Active-trip inspection workflow checks passed.");

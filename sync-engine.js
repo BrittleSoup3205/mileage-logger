@@ -121,6 +121,25 @@
     return readJSON(APP_STATE_KEY, null);
   }
 
+  function cloudBootstrapState() {
+    return {
+      activeTrip: null,
+      trips: [],
+      lastOdometer: "",
+      backup: {},
+      settings: { inspections: [] },
+      workflow: { timesheetEntries: [], timesheetWeeks: {} }
+    };
+  }
+
+  function finishCloudBootstrap(state) {
+    const latestTrip = (Array.isArray(state.trips) ? state.trips : [])
+      .filter((trip) => trip?.endOdometer !== undefined && trip?.endOdometer !== null && trip?.endOdometer !== "")
+      .sort((left, right) => String(right.endISO || "").localeCompare(String(left.endISO || "")))[0];
+    state.lastOdometer = latestTrip?.endOdometer ?? "";
+    return state;
+  }
+
   function writeAppState(state) {
     applyingRemote = true;
     try {
@@ -203,7 +222,12 @@
       const hash = hashValue(record.payload);
       const existing = meta.records[key];
       if (!existing) {
-        meta.records[key] = { hash, modifiedAt: timestamp, syncedAt: 0, tombstone: false };
+        meta.records[key] = {
+          hash,
+          modifiedAt: timestamp,
+          syncedAt: options.seedNewAsSynced ? timestamp : 0,
+          tombstone: false
+        };
       } else if (existing.hash !== hash || existing.tombstone) {
         if (!options.remoteApplied) {
           existing.modifiedAt = timestamp;
@@ -443,13 +467,19 @@
     try {
       const session = await validSession();
       if (!session?.user?.id) throw new Error("Signed-in user information is unavailable.");
+      const storedStateMissing = localStorage.getItem(APP_STATE_KEY) === null;
       let state = readAppState();
-      if (!state) throw new Error("Mileage Logger local state is unavailable.");
       const meta = loadMeta();
-      let localRecords = scanLocal(state, meta);
       const remoteRows = await fetchRemoteRecords();
-      const remoteByKey = new Map(remoteRows.map((row) => [recordKey(row.record_type, row.record_id), row]));
-      const initialCloudBootstrap = !meta.lastSyncISO && remoteRows.length > 0;
+      const cloudBootstrap = !state && storedStateMissing && remoteRows.some((row) => RECORD_TYPES.has(row.record_type));
+      if (!state && !cloudBootstrap) throw new Error("Mileage Logger local state is unavailable.");
+      if (cloudBootstrap) {
+        state = cloudBootstrapState();
+        meta.records = {};
+        meta.lastSyncISO = "";
+      }
+      let localRecords = cloudBootstrap ? new Map() : scanLocal(state, meta);
+      const initialCloudBootstrap = cloudBootstrap || (!meta.lastSyncISO && remoteRows.length > 0);
       let remoteApplied = false;
 
       for (const remote of remoteRows) {
@@ -503,15 +533,16 @@
         }
       }
 
+      if (cloudBootstrap) finishCloudBootstrap(state);
       if (remoteApplied) {
         saveMeta(meta);
         writeAppState(state);
         state = readAppState();
       }
 
-      localRecords = scanLocal(state, meta, { remoteApplied });
+      localRecords = scanLocal(state, meta, { remoteApplied, seedNewAsSynced: cloudBootstrap });
       const outgoing = [];
-      Object.entries(meta.records).forEach(([key, item]) => {
+      if (!cloudBootstrap) Object.entries(meta.records).forEach(([key, item]) => {
         const localModified = Number(item.modifiedAt || 0);
         const localSynced = Number(item.syncedAt || 0);
         if (localModified <= localSynced) return;
@@ -549,7 +580,7 @@
       meta.lastSyncISO = syncISO;
       saveMeta(meta);
       await heartbeat(session, syncISO);
-      setStatus(meta.conflicts.length ? "warn" : "ready", `${outgoing.length ? `${outgoing.length} change${outgoing.length === 1 ? "" : "s"} synchronized. ` : ""}Synced ${new Date(syncISO).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.${conflictMessage(meta)}`);
+      setStatus(meta.conflicts.length ? "warn" : "ready", `${cloudBootstrap ? "This device was initialized from existing cloud data. " : ""}${outgoing.length ? `${outgoing.length} change${outgoing.length === 1 ? "" : "s"} synchronized. ` : ""}Synced ${new Date(syncISO).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.${conflictMessage(meta)}`);
       return true;
     } catch (error) {
       console.warn("Mileage Logger sync failed:", error);
