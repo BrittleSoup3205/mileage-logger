@@ -1,4 +1,4 @@
-const CACHE_NAME = "mileage-logger-multi-device-v56";
+const CACHE_NAME = "mileage-logger-multi-device-v57";
 const APP_FILES = [
   "./",
   "./index.html?v=workflow-upgrades-2",
@@ -51,4 +51,3 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
-
