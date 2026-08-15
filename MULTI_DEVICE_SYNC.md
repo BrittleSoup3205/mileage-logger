@@ -49,9 +49,10 @@ Only the public/publishable key belongs in the browser app. Never place a servic
 1. Local edits save immediately using the existing Mileage Logger storage key.
 2. Every synchronized record has local sync metadata containing a content hash and local modification time.
 3. When online and signed in, the app pulls cloud changes and then pushes local changes.
-4. Deleted records are represented by tombstones so deletion propagates instead of reappearing on another device.
-5. If both devices change the same record after the last synchronization, the newer timestamp wins and the conflict is surfaced as a sync warning.
-6. The app also synchronizes when it returns to the foreground or internet access comes back.
+4. If an authenticated new device has no stored Mileage Logger state and cloud records already exist, its first sync is pull-only: the app creates a local state shell, applies the cloud records, rebuilds stale sync metadata, derives the last odometer from the newest completed trip, and uploads no records during that bootstrap.
+5. Deleted records are represented by tombstones so deletion propagates instead of reappearing on another device.
+6. If both devices change the same record after the last synchronization, the newer timestamp wins and the conflict is surfaced as a sync warning.
+7. The app also synchronizes when it returns to the foreground or internet access comes back.
 
 The normal intended workflow should rarely conflict because different devices normally work different parts of the day: the phone owns mileage/GPS while the iPad or PC edits inspection/reporting data.
 

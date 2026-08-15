@@ -9,7 +9,7 @@ vm.runInNewContext(source, context, { filename: "active-jobs-data.js" });
 
 const data = context.window.MileageActiveJobsData;
 assert.ok(data, "Active Jobs data module should load");
-assert.equal(data.activeJobs.length, 11, "The current Active Jobs Master rows should remain present");
+assert.equal(data.activeJobs.length, 15, "The current Active Jobs Master rows should remain present");
 
 const conflicts = data.reportingUnitConflicts();
 assert.ok(
@@ -65,6 +65,7 @@ assert.equal((csv.match(/42\.5/g) || []).length, 1, "Shared mileage must appear 
 
 const indexHtml = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
 assert.match(indexHtml, /active-jobs-data\.js\?v=visit-workspace-5/);
+assert.match(indexHtml, /active-jobs-management\.js\?v=upgrade-6-1/);
 const serviceWorker = fs.readFileSync(path.join(__dirname, "..", "service-worker.js"), "utf8");
 for (const match of serviceWorker.matchAll(/"\.\/([^"?]+)(?:\?[^"\s]+)?"/g)) {
   const asset = match[1];

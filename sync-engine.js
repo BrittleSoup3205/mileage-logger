@@ -9,7 +9,7 @@
   const SYNC_INTERVAL_MS = 20000;
   const DEFAULT_PROJECT_URL = "https://osvubxisjfplnljabvrn.supabase.co";
   const DEFAULT_PUBLISHABLE_KEY = "sb_publishable_n3tp6B8y5abgPN1r7ITUYA_cMuE7AlP";
-  const RECORD_TYPES = new Set(["active_trip", "trip", "inspection", "timesheet_entry", "timesheet_week", "preferences"]);
+  const RECORD_TYPES = new Set(["active_trip", "trip", "inspection", "timesheet_entry", "timesheet_week", "active_job", "facility_profile", "active_job_import", "preferences"]);
 
   let syncTimer = null;
   let syncInFlight = false;
@@ -121,6 +121,28 @@
     return readJSON(APP_STATE_KEY, null);
   }
 
+  function cloudBootstrapState() {
+    return {
+      activeTrip: null,
+      trips: [],
+      lastOdometer: "",
+      backup: {},
+      settings: { inspections: [] },
+      workflow: { timesheetEntries: [], timesheetWeeks: {} },
+      activeJobs: [],
+      facilityProfiles: [],
+      activeJobImports: []
+    };
+  }
+
+  function finishCloudBootstrap(state) {
+    const latestTrip = (Array.isArray(state.trips) ? state.trips : [])
+      .filter((trip) => trip?.endOdometer !== undefined && trip?.endOdometer !== null && trip?.endOdometer !== "")
+      .sort((left, right) => String(right.endISO || "").localeCompare(String(left.endISO || "")))[0];
+    state.lastOdometer = latestTrip?.endOdometer ?? "";
+    return state;
+  }
+
   function writeAppState(state) {
     applyingRemote = true;
     try {
@@ -184,6 +206,15 @@
     (Array.isArray(state.settings?.inspections) ? state.settings.inspections : []).forEach((inspection) => {
       if (inspection?.id) records.set(recordKey("inspection", inspection.id), { type: "inspection", id: inspection.id, payload: inspection });
     });
+    (Array.isArray(state.activeJobs) ? state.activeJobs : []).forEach((job) => {
+      if (job?.aj) records.set(recordKey("active_job", job.aj), { type: "active_job", id: job.aj, payload: job });
+    });
+    (Array.isArray(state.facilityProfiles) ? state.facilityProfiles : []).forEach((profile) => {
+      if (profile?.id) records.set(recordKey("facility_profile", profile.id), { type: "facility_profile", id: profile.id, payload: profile });
+    });
+    (Array.isArray(state.activeJobImports) ? state.activeJobImports : []).forEach((entry) => {
+      if (entry?.id) records.set(recordKey("active_job_import", entry.id), { type: "active_job_import", id: entry.id, payload: entry });
+    });
     (Array.isArray(state.workflow?.timesheetEntries) ? state.workflow.timesheetEntries : []).forEach((entry) => {
       if (entry?.id) records.set(recordKey("timesheet_entry", entry.id), { type: "timesheet_entry", id: entry.id, payload: entry });
     });
@@ -203,7 +234,12 @@
       const hash = hashValue(record.payload);
       const existing = meta.records[key];
       if (!existing) {
-        meta.records[key] = { hash, modifiedAt: timestamp, syncedAt: 0, tombstone: false };
+        meta.records[key] = {
+          hash,
+          modifiedAt: timestamp,
+          syncedAt: options.seedNewAsSynced ? timestamp : 0,
+          tombstone: false
+        };
       } else if (existing.hash !== hash || existing.tombstone) {
         if (!options.remoteApplied) {
           existing.modifiedAt = timestamp;
@@ -243,6 +279,37 @@
         if (index >= 0) state.trips.splice(index, 1);
       } else if (index >= 0) state.trips[index] = payload;
       else state.trips.push(payload);
+      return;
+    }
+
+    if (type === "active_job") {
+      state.activeJobs = Array.isArray(state.activeJobs) ? state.activeJobs : [];
+      const index = state.activeJobs.findIndex((item) => item?.aj === id);
+      if (deleted) {
+        if (index >= 0) state.activeJobs.splice(index, 1);
+      } else if (index >= 0) state.activeJobs[index] = payload;
+      else state.activeJobs.push(payload);
+      return;
+    }
+
+    if (type === "facility_profile") {
+      state.facilityProfiles = Array.isArray(state.facilityProfiles) ? state.facilityProfiles : [];
+      const index = state.facilityProfiles.findIndex((item) => item?.id === id);
+      if (deleted) {
+        if (index >= 0) state.facilityProfiles.splice(index, 1);
+      } else if (index >= 0) state.facilityProfiles[index] = payload;
+      else state.facilityProfiles.push(payload);
+      return;
+    }
+
+    if (type === "active_job_import") {
+      state.activeJobImports = Array.isArray(state.activeJobImports) ? state.activeJobImports : [];
+      const index = state.activeJobImports.findIndex((item) => item?.id === id);
+      if (deleted) {
+        if (index >= 0) state.activeJobImports.splice(index, 1);
+      } else if (index >= 0) state.activeJobImports[index] = payload;
+      else state.activeJobImports.push(payload);
+      state.activeJobImports.sort((left, right) => String(right.importedISO || "").localeCompare(String(left.importedISO || "")));
       return;
     }
 
@@ -443,13 +510,20 @@
     try {
       const session = await validSession();
       if (!session?.user?.id) throw new Error("Signed-in user information is unavailable.");
+      const storedStateMissing = localStorage.getItem(APP_STATE_KEY) === null;
       let state = readAppState();
-      if (!state) throw new Error("Mileage Logger local state is unavailable.");
       const meta = loadMeta();
-      let localRecords = scanLocal(state, meta);
       const remoteRows = await fetchRemoteRecords();
       const remoteByKey = new Map(remoteRows.map((row) => [recordKey(row.record_type, row.record_id), row]));
-      const initialCloudBootstrap = !meta.lastSyncISO && remoteRows.length > 0;
+      const cloudBootstrap = !state && storedStateMissing && remoteRows.some((row) => RECORD_TYPES.has(row.record_type));
+      if (!state && !cloudBootstrap) throw new Error("Mileage Logger local state is unavailable.");
+      if (cloudBootstrap) {
+        state = cloudBootstrapState();
+        meta.records = {};
+        meta.lastSyncISO = "";
+      }
+      let localRecords = cloudBootstrap ? new Map() : scanLocal(state, meta);
+      const initialCloudBootstrap = cloudBootstrap || (!meta.lastSyncISO && remoteRows.length > 0);
       let remoteApplied = false;
 
       for (const remote of remoteRows) {
@@ -503,15 +577,16 @@
         }
       }
 
+      if (cloudBootstrap) finishCloudBootstrap(state);
       if (remoteApplied) {
         saveMeta(meta);
         writeAppState(state);
         state = readAppState();
       }
 
-      localRecords = scanLocal(state, meta, { remoteApplied });
+      localRecords = scanLocal(state, meta, { remoteApplied, seedNewAsSynced: cloudBootstrap });
       const outgoing = [];
-      Object.entries(meta.records).forEach(([key, item]) => {
+      if (!cloudBootstrap) Object.entries(meta.records).forEach(([key, item]) => {
         const localModified = Number(item.modifiedAt || 0);
         const localSynced = Number(item.syncedAt || 0);
         if (localModified <= localSynced) return;
@@ -549,7 +624,7 @@
       meta.lastSyncISO = syncISO;
       saveMeta(meta);
       await heartbeat(session, syncISO);
-      setStatus(meta.conflicts.length ? "warn" : "ready", `${outgoing.length ? `${outgoing.length} change${outgoing.length === 1 ? "" : "s"} synchronized. ` : ""}Synced ${new Date(syncISO).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.${conflictMessage(meta)}`);
+      setStatus(meta.conflicts.length ? "warn" : "ready", `${cloudBootstrap ? "This device was initialized from existing cloud data. " : ""}${outgoing.length ? `${outgoing.length} change${outgoing.length === 1 ? "" : "s"} synchronized. ` : ""}Synced ${new Date(syncISO).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.${conflictMessage(meta)}`);
       return true;
     } catch (error) {
       console.warn("Mileage Logger sync failed:", error);
@@ -639,7 +714,7 @@
         <label class="checkbox-row"><input id="multiDeviceEnabled" type="checkbox"${config.enabled ? " checked" : ""}><span>Enable multi-device synchronization on this device</span></label>
         <button id="multiDeviceSaveConfigBtn" class="button button-secondary button-small" type="button">Save Sync Setup</button>
       </details>
-      <p class="privacy-note compact-note"><strong>Current phase:</strong> trips, active trip, inspections, vendor-load details, Concur status, timesheet entries/weeks, and durable app preferences synchronize. Actual photo files, the private STA master PDF, and other documents remain device-local until the file-sync phase is enabled.</p>
+      <p class="privacy-note compact-note"><strong>Current phase:</strong> trips, active trip, inspections, vendor-load details, Active Jobs, Facility Profiles, import audit history, Concur status, timesheet entries/weeks, and durable app preferences synchronize. Actual photo files, the private STA master PDF, and other documents remain device-local until the file-sync phase is enabled.</p>
     `;
     const firstCard = settingsSection.querySelector(".settings-card, .warning-card, form, .card");
     if (firstCard) firstCard.insertAdjacentElement("beforebegin", card);
