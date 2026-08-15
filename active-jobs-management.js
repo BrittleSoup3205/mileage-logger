@@ -253,29 +253,68 @@
       existingByIdentity.get(key).push(job);
     });
     const ajCounts = new Map();
-    const identityCounts = new Map();
-    importedJobs.forEach((job) => {
-      const aj = trimmed(job.aj);
-      const identity = identityKey(job);
+    const prepared = importedJobs.map((sourceJob) => {
+      const aj = trimmed(sourceJob.aj);
+      const existing = existingByAj.get(aj) || null;
+      const job = cloneJob(sourceJob);
+      const warnings = [];
+      if (existing) {
+        [
+          ["inspectionNo", "S&B Inspection Number"],
+          ["reportingVendor", "Reporting Vendor / Fabricator"]
+        ].forEach(([field, label]) => {
+          if (!trimmed(sourceJob[field]) && trimmed(existing[field])) {
+            job[field] = existing[field];
+            warnings.push(`Source blank — existing ${label} preserved.`);
+          } else if (!trimmed(sourceJob[field]) && !trimmed(existing[field])) {
+            warnings.push(`Source blank — no stored ${label} is available for this existing AJ.`);
+          }
+        });
+      }
+      return { sourceJob, job, aj, existing, warnings };
+    });
+    const importedByIdentity = new Map();
+    prepared.forEach((entry) => {
+      const identity = identityKey(entry.job);
+      const { aj } = entry;
       if (aj) ajCounts.set(aj, (ajCounts.get(aj) || 0) + 1);
-      if (identity) identityCounts.set(identity, (identityCounts.get(identity) || 0) + 1);
+      if (identity) {
+        if (!importedByIdentity.has(identity)) importedByIdentity.set(identity, []);
+        importedByIdentity.get(identity).push(entry);
+      }
     });
 
-    const items = importedJobs.map((job) => {
-      const aj = trimmed(job.aj);
+    const items = prepared.map(({ sourceJob, job, aj, existing, warnings }) => {
       const identity = identityKey(job);
-      const existing = existingByAj.get(aj);
       const reasons = [];
       if (!aj) reasons.push("Missing AJ / Record ID");
-      if (!trimmed(job.inspectionNo)) reasons.push("Missing S&B Inspection Number");
-      if (!trimmed(job.reportingVendor)) reasons.push("Missing Reporting Vendor / Fabricator");
+      if (!existing && !trimmed(job.inspectionNo)) reasons.push("Missing S&B Inspection Number");
+      if (!existing && !trimmed(job.reportingVendor)) reasons.push("Missing Reporting Vendor / Fabricator");
       if (aj && ajCounts.get(aj) > 1) reasons.push("Duplicate AJ number in imported workbook");
-      if (identity && identityCounts.get(identity) > 1) reasons.push("Duplicate S&B Inspection Number + Reporting Vendor in imported workbook");
-      if (existing && (!sameValue(existing.inspectionNo, job.inspectionNo) || !sameValue(existing.reportingVendor, job.reportingVendor))) {
-        reasons.push("Existing AJ identity changed (inspection number or reporting vendor)");
+      if (existing) {
+        if (trimmed(sourceJob.inspectionNo) && trimmed(existing.inspectionNo) && !sameValue(existing.inspectionNo, sourceJob.inspectionNo)) {
+          reasons.push("Existing AJ identity changed (S&B Inspection Number)");
+        }
+        if (trimmed(sourceJob.reportingVendor) && trimmed(existing.reportingVendor) && !sameValue(existing.reportingVendor, sourceJob.reportingVendor)) {
+          reasons.push("Existing AJ identity changed (Reporting Vendor / Fabricator)");
+        }
+      }
+
+      const importedGroup = importedByIdentity.get(identity) || [];
+      const existingGroup = existingByIdentity.get(identity) || [];
+      const unchangedExistingIdentity = Boolean(existing && identity && identityKey(existing) === identity);
+      const grandfatheredDuplicate = unchangedExistingIdentity
+        && existingGroup.length > 1
+        && importedGroup.every((entry) => entry.existing && identityKey(entry.existing) === identity && existingGroup.some((candidate) => trimmed(candidate.aj) === entry.aj));
+      if (identity && importedGroup.length > 1) {
+        if (grandfatheredDuplicate) warnings.push("Existing/grandfathered duplicate identity preserved; AJs remain separate.");
+        else reasons.push("New duplicate S&B Inspection Number + Reporting Vendor in imported workbook");
       }
       const otherExisting = (existingByIdentity.get(identity) || []).filter((candidate) => trimmed(candidate.aj) !== aj);
-      if (identity && otherExisting.length) reasons.push(`Identity already belongs to ${otherExisting.map((candidate) => candidate.aj).join(", ")}`);
+      if (identity && otherExisting.length) {
+        if (grandfatheredDuplicate) warnings.push("Known historical identity exception — no combine or renumber performed.");
+        else reasons.push(`Identity already belongs to ${otherExisting.map((candidate) => candidate.aj).join(", ")}`);
+      }
 
       const changedFields = existing ? changesFor(existing, job) : [];
       let classification = "NO CHANGE";
@@ -283,12 +322,12 @@
       else if (!existing) classification = "NEW";
       else if (keyText(job.openClosed) === "closed" && keyText(existing.openClosed) !== "closed") classification = "CLOSED";
       else if (changedFields.length) classification = "UPDATED";
-      return { aj, job, existing: existing || null, classification, changedFields, reasons };
+      return { aj, job, sourceJob, existing, classification, changedFields, reasons, warnings: [...new Set(warnings)] };
     });
 
     const counts = { NEW: 0, UPDATED: 0, CLOSED: 0, "NO CHANGE": 0, CONFLICT: 0 };
     items.forEach((item) => { counts[item.classification] += 1; });
-    return { items, counts, importedCount: importedJobs.length };
+    return { items, counts, warningCount: items.filter((item) => item.warnings.length).length, importedCount: importedJobs.length };
   }
 
   function cloneJob(job) {
@@ -449,6 +488,7 @@
       deviceLabel: metadata.deviceLabel || "",
       sourceHash: metadata.sourceHash || "",
       counts: { ...review.counts },
+      warningCount: Number(review.warningCount || 0),
       conflictResolutions: (review.items || []).filter((item) => item.classification === "CONFLICT").map((item) => ({
         aj: item.aj || "",
         sourceRow: item.job?.sourceRow || null,
@@ -512,6 +552,7 @@
     return `
       <div class="active-jobs-review-counts">
         ${["NEW", "UPDATED", "CLOSED", "NO CHANGE", "CONFLICT"].map((name) => `<span class="${classificationClass(name)}"><strong>${count(name)}</strong> ${name}</span>`).join("")}
+        <span class="active-jobs-warning"><strong>${Number(review.warningCount || 0)}</strong> WARNINGS</span>
       </div>
       <div class="active-jobs-review-list">${review.items.map((item, index) => `
         <article class="active-jobs-review-item ${classificationClass(item.classification)}">
@@ -519,6 +560,7 @@
           <strong>${escapeHTML(item.aj || `Row ${item.job.sourceRow || "?"}`)} — ${escapeHTML(item.job.inspectionNo || "No inspection number")}</strong>
           <small>${escapeHTML(item.job.reportingVendor || "No reporting vendor")}${item.changedFields.length ? ` • Changed: ${escapeHTML(item.changedFields.join(", "))}` : ""}</small>
           ${item.reasons.length ? `<p>${escapeHTML(item.reasons.join("; "))}</p>` : ""}
+          ${item.warnings?.length ? `<p class="active-jobs-warning-text">${escapeHTML(item.warnings.join(" "))}</p>` : ""}
           ${item.classification === "CONFLICT" ? `<label>Required resolution<select data-conflict-resolution="${index}"><option value=""${item.resolution ? "" : " selected"}>Choose…</option><option value="keep"${item.resolution === "keep" ? " selected" : ""}>Keep current data / skip row</option>${conflictCanBeAccepted(item) ? `<option value="accept"${item.resolution === "accept" ? " selected" : ""}>Accept workbook identity change</option>` : ""}</select></label><small>${conflictCanBeAccepted(item) ? "Accept is available because this is a complete, non-duplicate identity change." : "Correct duplicate or missing identity data in the workbook and review it again if this row should be imported."}</small>` : ""}
         </article>`).join("")}
       </div>`;
@@ -597,7 +639,7 @@
       </details>
       <details class="active-jobs-management-details">
         <summary>Recent import history (${imports.length})</summary>
-        <div class="active-jobs-import-history">${imports.length ? imports.slice(0, 10).map((entry) => `<article><strong>${escapeHTML(entry.sourceFilename || "Active Jobs import")}</strong><small>${escapeHTML(new Date(entry.importedISO).toLocaleString())} • NEW ${entry.counts?.NEW || 0}, UPDATED ${entry.counts?.UPDATED || 0}, CLOSED ${entry.counts?.CLOSED || 0}, CONFLICT ${entry.counts?.CONFLICT || 0}</small></article>`).join("") : `<div class="active-jobs-empty">No applied imports yet.</div>`}</div>
+        <div class="active-jobs-import-history">${imports.length ? imports.slice(0, 10).map((entry) => `<article><strong>${escapeHTML(entry.sourceFilename || "Active Jobs import")}</strong><small>${escapeHTML(new Date(entry.importedISO).toLocaleString())} • NEW ${entry.counts?.NEW || 0}, UPDATED ${entry.counts?.UPDATED || 0}, CLOSED ${entry.counts?.CLOSED || 0}, CONFLICT ${entry.counts?.CONFLICT || 0}, WARNINGS ${entry.warningCount || 0}</small></article>`).join("") : `<div class="active-jobs-empty">No applied imports yet.</div>`}</div>
       </details>`;
   }
 
@@ -714,8 +756,8 @@
     renderManagement();
     const nextStatus = root.document?.getElementById("activeJobsImportStatus");
     if (nextStatus) {
-      nextStatus.textContent = `${parsed.jobs.length} Active Jobs rows read from ${parsed.sheetName}. Review all changes before Apply Update.`;
-      nextStatus.className = review.counts.CONFLICT ? "gps-status warn" : "gps-status good";
+      nextStatus.textContent = `${parsed.jobs.length} Active Jobs rows read from ${parsed.sheetName}. ${review.warningCount || 0} non-blocking warning row${review.warningCount === 1 ? "" : "s"}. Review all changes before Apply Update.`;
+      nextStatus.className = review.counts.CONFLICT || review.warningCount ? "gps-status warn" : "gps-status good";
     }
   }
 
@@ -840,9 +882,14 @@
   function initialize() {
     if (!root.document || !root.localStorage) return;
     const raw = root.localStorage.getItem(STATE_KEY);
-    const original = raw ? JSON.parse(raw) : {};
-    const migrated = migrateState(original);
-    if (JSON.stringify(original) !== JSON.stringify(migrated)) writeState(migrated, { backupChange: false });
+    // An authenticated empty device must remain truly empty until the sync
+    // engine performs its pull-only cloud bootstrap. Persist migrations only
+    // when this device already has Mileage Logger state.
+    if (raw !== null) {
+      const original = JSON.parse(raw || "{}");
+      const migrated = migrateState(original);
+      if (JSON.stringify(original) !== JSON.stringify(migrated)) writeState(migrated, { backupChange: false });
+    }
     ensureManagementCard();
     ensureStartSelectors();
     bindUI();

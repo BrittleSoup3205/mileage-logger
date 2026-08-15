@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const vm = require("node:vm");
 const management = require("../active-jobs-management.js");
 const fflate = require("../vendor/fflate.min.js");
 
@@ -74,6 +75,37 @@ const review = management.buildImportReview(current, [
   { aj: "AJ-004", inspectionNo: "E-4", reportingVendor: "Vendor D", projectName: "New Job", openClosed: "Open" }
 ]);
 assert.deepEqual(review.counts, { NEW: 1, UPDATED: 1, CLOSED: 1, "NO CHANGE": 1, CONFLICT: 0 });
+
+const blankExistingIdentity = management.buildImportReview([current[0]], [
+  { aj: "AJ-001", inspectionNo: "", reportingVendor: "", projectName: "Updated safely", openClosed: "Open" }
+]);
+assert.equal(blankExistingIdentity.counts.CONFLICT, 0, "Existing AJ source blanks must not block when stored permanent identifiers are available");
+assert.equal(blankExistingIdentity.items[0].job.inspectionNo, "E-1", "Blank source inspection number must preserve the stored value");
+assert.equal(blankExistingIdentity.items[0].job.reportingVendor, "Vendor A", "Blank source Reporting Vendor must preserve the stored value");
+assert.match(blankExistingIdentity.items[0].warnings.join(" "), /Source blank.*existing.*preserved/i);
+const blankIdentityApplied = management.applyImportReview({ activeJobs: structuredClone([current[0]]) }, blankExistingIdentity, { importedISO: "2026-08-15T10:00:00.000Z" });
+assert.equal(blankIdentityApplied.state.activeJobs[0].inspectionNo, "E-1", "Applying other row changes must never erase a stored inspection number");
+assert.equal(blankIdentityApplied.state.activeJobs[0].reportingVendor, "Vendor A", "Applying other row changes must never erase a stored Reporting Vendor");
+
+const newMissingVendor = management.buildImportReview([], [
+  { aj: "AJ-NEW", inspectionNo: "E-NEW", reportingVendor: "", projectName: "Incomplete new job" }
+]);
+assert.equal(newMissingVendor.counts.CONFLICT, 1, "A new AJ without Reporting Vendor remains blocking");
+
+const historicalDuplicates = [
+  { aj: "AJ-H1", inspectionNo: "E-HIST", reportingVendor: "Historical Vendor", projectName: "Unit 1", openClosed: "Open" },
+  { aj: "AJ-H2", inspectionNo: "E-HIST", reportingVendor: "Historical Vendor", projectName: "Unit 2", openClosed: "Open" }
+];
+const grandfatheredReview = management.buildImportReview(historicalDuplicates, structuredClone(historicalDuplicates));
+assert.equal(grandfatheredReview.counts.CONFLICT, 0, "Known unchanged historical duplicate identities must not repeatedly block");
+assert.equal(grandfatheredReview.warningCount, 2);
+assert.match(grandfatheredReview.items[0].warnings.join(" "), /grandfathered|historical/i);
+
+const introducedDuplicate = management.buildImportReview([historicalDuplicates[0]], [
+  historicalDuplicates[0],
+  { aj: "AJ-H3", inspectionNo: "E-HIST", reportingVendor: "Historical Vendor", projectName: "New duplicate" }
+]);
+assert.equal(introducedDuplicate.counts.CONFLICT, 2, "A newly introduced duplicate identity remains blocking");
 
 const duplicateAj = management.buildImportReview([], [
   { aj: "AJ-010", inspectionNo: "E-10", reportingVendor: "Vendor X" },
@@ -157,6 +189,11 @@ if (fs.existsSync(realWorkbookPath)) {
   assert.equal(real.jobs.find((job) => job.aj === "AJ-014").clientProjectNo, "330", "Real-world identifiers must remain exact text");
   assert.equal(real.jobs.find((job) => job.aj === "AJ-001").reportingVendor, "", "Real-world blank identifiers must remain blank");
   assert.equal(real.jobs.some((job) => job.aj === "#REF!"), false, "Formula-only table rows must not become jobs");
+  const dataContext = { window: {} };
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "..", "active-jobs-data.js"), "utf8"), dataContext);
+  const realReview = management.buildImportReview(dataContext.window.MileageActiveJobsData.activeJobs, real.jobs);
+  assert.deepEqual(realReview.counts, { NEW: 0, UPDATED: 15, CLOSED: 0, "NO CHANGE": 0, CONFLICT: 0 }, "Routine real-workbook review should preserve known identity blanks without blocking");
+  assert.equal(realReview.warningCount, 13, "Known source blanks and grandfathered duplicate rows should remain visible as non-blocking warnings");
 }
 
 console.log("Active Jobs import, migration, Facility Profile, pending assignment, and real-workbook tests passed.");

@@ -3,6 +3,8 @@ const fs = require("node:fs");
 
 const sync = fs.readFileSync("sync-engine.js", "utf8");
 const schema = fs.readFileSync("supabase/migrations/001_multi_device_sync.sql", "utf8");
+const index = fs.readFileSync("index.html", "utf8");
+const serviceWorker = fs.readFileSync("service-worker.js", "utf8");
 
 assert.match(sync, /mileage_logger_state_v3/, "Sync must preserve the existing app state key");
 assert.match(sync, /active_trip/, "Active trip must synchronize across devices");
@@ -22,5 +24,8 @@ assert.match(schema, /mileage_sync_devices/, "Device heartbeat table must exist"
 assert.match(sync, /DEFAULT_PROJECT_URL/, "Cloud project should be preconfigured so users do not paste infrastructure settings");
 assert.match(sync, /DEFAULT_PUBLISHABLE_KEY/, "Only the public publishable key may be preconfigured in the client");
 assert.match(sync, /initialCloudBootstrap/, "A newly linked second device must prefer existing cloud state on its first synchronization");
+assert.match(sync, /cloudBootstrap/, "An actually empty device must use the pull-only cloud bootstrap path");
+assert.match(index, /sync-engine\.js\?v=active-jobs-bootstrap-3/, "The page must request the combined bootstrap-fixed sync engine");
+assert.match(serviceWorker, /sync-engine\.js\?v=active-jobs-bootstrap-3/, "The offline cache must install the combined bootstrap-fixed sync engine");
 
 console.log("Multi-device sync regression checks passed.");

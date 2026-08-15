@@ -973,6 +973,8 @@ hr {
 .active-jobs-review-item > span { font-size: .76rem; font-weight: 900; letter-spacing: .07em; }
 .active-jobs-review-item p { margin: 3px 0 0; color: var(--warning); }
 .active-jobs-review-item label { margin-top: 7px; }
+.active-jobs-warning { border-color: var(--warning) !important; }
+.active-jobs-review-item .active-jobs-warning-text { color: var(--muted); }
 .active-jobs-new { border-color: var(--success) !important; }
 .active-jobs-updated { border-color: var(--info) !important; }
 .active-jobs-closed { border-color: var(--muted) !important; }

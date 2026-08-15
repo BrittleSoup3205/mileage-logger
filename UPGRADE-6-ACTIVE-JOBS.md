@@ -12,7 +12,7 @@ On first run, `activeJobs-data.js` seeds `activeJobs` only when that array does 
 
 Settings → **Update Active Jobs** accepts an `.xlsx` file with a worksheet named exactly `Active Jobs`. The reader finds the actual header row, preserves source text, ignores formula-only table rows, and treats Excel error values as unknown/blank.
 
-The review classifies every applicable row as NEW, UPDATED, CLOSED, NO CHANGE, or CONFLICT. Nothing changes until **Apply Update**. Every conflict requires an explicit decision. Complete non-duplicate identity changes may be accepted; duplicate or incomplete identities must be kept/skipped or corrected in the workbook and reviewed again. Rows missing from a later workbook never close or delete an existing job.
+The review classifies every applicable row as NEW, UPDATED, CLOSED, NO CHANGE, or CONFLICT. Nothing changes until **Apply Update**. When an existing AJ's source row leaves S&B Inspection Number or Reporting Vendor blank, the stored permanent identifier is preserved and shown as a non-blocking warning; blank source cells never erase it. Known historical duplicate identities remain separate with a grandfathered warning. New missing identities, newly introduced duplicates, and nonblank identity changes remain blocking conflicts requiring an explicit decision. Rows missing from a later workbook never close or delete an existing job.
 
 Future workbook imports use this same in-app action and do not require a deployment.
 
@@ -31,6 +31,8 @@ The existing `mileage_sync_records` table and its existing user-scoped RLS polic
 - `active_job_import`
 
 No database schema migration or service-role key is required. The same signed-in user receives these structured records through the existing sync engine; actual photos and private document files remain device-local as before.
+
+An authenticated iPad or PC with no `mileage_logger_state_v3` uses the existing pull-only empty-device bootstrap: it downloads authoritative cloud records, rebuilds stale sync metadata, derives the last odometer from the newest completed cloud trip, and uploads nothing during that first bootstrap. Upgrade #6 does not materialize its embedded Active Jobs seed before this check.
 
 ## User-test checkpoint
 
