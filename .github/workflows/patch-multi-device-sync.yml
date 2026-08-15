@@ -21,6 +21,7 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           index = Path('index.html')
           text = index.read_text(encoding='utf-8')
@@ -40,7 +41,6 @@ jobs:
 
           sw = Path('service-worker.js')
           text = sw.read_text(encoding='utf-8')
-          import re
           text = re.sub(r'const CACHE_NAME = "[^"]+";', 'const CACHE_NAME = "mileage-logger-multi-device-v56";', text, count=1)
           css_asset = '  "./multi-device.css?v=multi-device-1",'
           if css_asset not in text:
