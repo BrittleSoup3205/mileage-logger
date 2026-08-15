@@ -1,4 +1,4 @@
-name: Integrate multi-device sync files
+name: Refine multi-device sync
 
 on:
   push:
@@ -17,47 +17,58 @@ jobs:
         with:
           ref: agent/multi-device-sync
 
-      - name: Patch HTML and offline cache
+      - name: Apply sync refinements
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
-          index = Path('index.html')
-          text = index.read_text(encoding='utf-8')
-          css_tag = '<link rel="stylesheet" href="./multi-device.css?v=multi-device-1">'
-          if css_tag not in text:
-              marker = '<link rel="stylesheet" href="./styles.css?v=workflow-upgrades-2">'
-              if marker not in text:
-                  raise SystemExit('styles marker not found in index.html')
-              text = text.replace(marker, marker + '\n  ' + css_tag, 1)
-          script_tag = '<script src="./sync-engine.js?v=multi-device-1"></script>'
-          if script_tag not in text:
-              marker = '<script src="./workflow-queues.js?v=workflow-upgrades-2"></script>'
-              if marker not in text:
-                  raise SystemExit('workflow queue script marker not found in index.html')
-              text = text.replace(marker, marker + '\n  ' + script_tag, 1)
-          index.write_text(text, encoding='utf-8')
+          sync = Path('sync-engine.js')
+          text = sync.read_text(encoding='utf-8')
 
-          sw = Path('service-worker.js')
-          text = sw.read_text(encoding='utf-8')
-          text = re.sub(r'const CACHE_NAME = "[^"]+";', 'const CACHE_NAME = "mileage-logger-multi-device-v56";', text, count=1)
-          css_asset = '  "./multi-device.css?v=multi-device-1",'
-          if css_asset not in text:
-              marker = '  "./styles.css?v=workflow-upgrades-2",'
+          marker = '  const SYNC_INTERVAL_MS = 20000;\n'
+          addition = '''  const SYNC_INTERVAL_MS = 20000;\n  const DEFAULT_PROJECT_URL = "https://osvubxisjfplnljabvrn.supabase.co";\n  const DEFAULT_PUBLISHABLE_KEY = "sb_publishable_n3tp6B8y5abgPN1r7ITUYA_cMuE7AlP";\n'''
+          if 'DEFAULT_PROJECT_URL' not in text:
               if marker not in text:
-                  raise SystemExit('styles asset marker not found in service-worker.js')
-              text = text.replace(marker, marker + '\n' + css_asset, 1)
-          sync_asset = '  "./sync-engine.js?v=multi-device-1",'
-          if sync_asset not in text:
-              marker = '  "./workflow-queues.js?v=workflow-upgrades-2",'
-              if marker not in text:
-                  raise SystemExit('workflow queue asset marker not found in service-worker.js')
-              text = text.replace(marker, marker + '\n' + sync_asset, 1)
-          sw.write_text(text, encoding='utf-8')
+                  raise SystemExit('sync interval marker not found')
+              text = text.replace(marker, addition, 1)
+
+          old = '''      enabled: Boolean(config.enabled),\n      projectUrl: String(config.projectUrl || "").trim().replace(/\\/$/, ""),\n      publishableKey: String(config.publishableKey || "").trim(),'''
+          new = '''      enabled: config.enabled === undefined ? true : Boolean(config.enabled),\n      projectUrl: String(config.projectUrl || DEFAULT_PROJECT_URL).trim().replace(/\\/$/, ""),\n      publishableKey: String(config.publishableKey || DEFAULT_PUBLISHABLE_KEY).trim(),'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif new not in text:
+              raise SystemExit('loadConfig defaults pattern not found')
+
+          old = '''      const remoteRows = await fetchRemoteRecords();\n      const remoteByKey = new Map(remoteRows.map((row) => [recordKey(row.record_type, row.record_id), row]));\n      let remoteApplied = false;'''
+          new = '''      const remoteRows = await fetchRemoteRecords();\n      const remoteByKey = new Map(remoteRows.map((row) => [recordKey(row.record_type, row.record_id), row]));\n      const initialCloudBootstrap = !meta.lastSyncISO && remoteRows.length > 0;\n      let remoteApplied = false;'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif new not in text:
+              raise SystemExit('initial bootstrap marker not found')
+
+          old = '''        const localHash = localRecord ? hashValue(localRecord.payload) : (localMeta?.tombstone ? "__deleted__" : "__missing__");\n\n        if (!localMeta) {'''
+          new = '''        const localHash = localRecord ? hashValue(localRecord.payload) : (localMeta?.tombstone ? "__deleted__" : "__missing__");\n        const contentDiffers = localHash !== remoteHash;\n\n        if (!localMeta || (initialCloudBootstrap && contentDiffers)) {'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif new not in text:
+              raise SystemExit('bootstrap comparison pattern not found')
+
+          duplicate = '''        const contentDiffers = localHash !== remoteHash;\n\n        if (localDirty && remoteChanged && contentDiffers) {'''
+          replacement = '''        if (localDirty && remoteChanged && contentDiffers) {'''
+          if duplicate in text:
+              text = text.replace(duplicate, replacement, 1)
+
+          sync.write_text(text, encoding='utf-8')
+
+          test = Path('tests/multi-device-sync.test.cjs')
+          text = test.read_text(encoding='utf-8')
+          additions = '''\nassert.match(sync, /DEFAULT_PROJECT_URL/, "Cloud project should be preconfigured so users do not paste infrastructure settings");\nassert.match(sync, /DEFAULT_PUBLISHABLE_KEY/, "Only the public publishable key may be preconfigured in the client");\nassert.match(sync, /initialCloudBootstrap/, "A newly linked second device must prefer existing cloud state on its first synchronization");\n'''
+          if 'initialCloudBootstrap' not in text:
+              text = text.replace('\nconsole.log("Multi-device sync regression checks passed.");', additions + '\nconsole.log("Multi-device sync regression checks passed.");')
+          test.write_text(text, encoding='utf-8')
           PY
 
-      - name: Validate current app and sync files
+      - name: Validate
         run: |
           node --check app.js
           node --check inspections.js
@@ -70,14 +81,14 @@ jobs:
           node tests/backup-compatibility.test.cjs
           node tests/multi-device-sync.test.cjs
 
-      - name: Commit integration patch
+      - name: Commit refinements
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add index.html service-worker.js
+          git add sync-engine.js tests/multi-device-sync.test.cjs
           if git diff --cached --quiet; then
-            echo "No integration patch needed"
+            echo "No refinements needed"
             exit 0
           fi
-          git commit -m "Load multi-device sync in the PWA"
+          git commit -m "Harden first multi-device synchronization"
           git push origin HEAD:agent/multi-device-sync
