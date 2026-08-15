@@ -9,7 +9,7 @@
   const SYNC_INTERVAL_MS = 20000;
   const DEFAULT_PROJECT_URL = "https://osvubxisjfplnljabvrn.supabase.co";
   const DEFAULT_PUBLISHABLE_KEY = "sb_publishable_n3tp6B8y5abgPN1r7ITUYA_cMuE7AlP";
-  const RECORD_TYPES = new Set(["active_trip", "trip", "inspection", "timesheet_entry", "timesheet_week", "preferences"]);
+  const RECORD_TYPES = new Set(["active_trip", "trip", "inspection", "timesheet_entry", "timesheet_week", "active_job", "facility_profile", "active_job_import", "preferences"]);
 
   let syncTimer = null;
   let syncInFlight = false;
@@ -184,6 +184,15 @@
     (Array.isArray(state.settings?.inspections) ? state.settings.inspections : []).forEach((inspection) => {
       if (inspection?.id) records.set(recordKey("inspection", inspection.id), { type: "inspection", id: inspection.id, payload: inspection });
     });
+    (Array.isArray(state.activeJobs) ? state.activeJobs : []).forEach((job) => {
+      if (job?.aj) records.set(recordKey("active_job", job.aj), { type: "active_job", id: job.aj, payload: job });
+    });
+    (Array.isArray(state.facilityProfiles) ? state.facilityProfiles : []).forEach((profile) => {
+      if (profile?.id) records.set(recordKey("facility_profile", profile.id), { type: "facility_profile", id: profile.id, payload: profile });
+    });
+    (Array.isArray(state.activeJobImports) ? state.activeJobImports : []).forEach((entry) => {
+      if (entry?.id) records.set(recordKey("active_job_import", entry.id), { type: "active_job_import", id: entry.id, payload: entry });
+    });
     (Array.isArray(state.workflow?.timesheetEntries) ? state.workflow.timesheetEntries : []).forEach((entry) => {
       if (entry?.id) records.set(recordKey("timesheet_entry", entry.id), { type: "timesheet_entry", id: entry.id, payload: entry });
     });
@@ -243,6 +252,37 @@
         if (index >= 0) state.trips.splice(index, 1);
       } else if (index >= 0) state.trips[index] = payload;
       else state.trips.push(payload);
+      return;
+    }
+
+    if (type === "active_job") {
+      state.activeJobs = Array.isArray(state.activeJobs) ? state.activeJobs : [];
+      const index = state.activeJobs.findIndex((item) => item?.aj === id);
+      if (deleted) {
+        if (index >= 0) state.activeJobs.splice(index, 1);
+      } else if (index >= 0) state.activeJobs[index] = payload;
+      else state.activeJobs.push(payload);
+      return;
+    }
+
+    if (type === "facility_profile") {
+      state.facilityProfiles = Array.isArray(state.facilityProfiles) ? state.facilityProfiles : [];
+      const index = state.facilityProfiles.findIndex((item) => item?.id === id);
+      if (deleted) {
+        if (index >= 0) state.facilityProfiles.splice(index, 1);
+      } else if (index >= 0) state.facilityProfiles[index] = payload;
+      else state.facilityProfiles.push(payload);
+      return;
+    }
+
+    if (type === "active_job_import") {
+      state.activeJobImports = Array.isArray(state.activeJobImports) ? state.activeJobImports : [];
+      const index = state.activeJobImports.findIndex((item) => item?.id === id);
+      if (deleted) {
+        if (index >= 0) state.activeJobImports.splice(index, 1);
+      } else if (index >= 0) state.activeJobImports[index] = payload;
+      else state.activeJobImports.push(payload);
+      state.activeJobImports.sort((left, right) => String(right.importedISO || "").localeCompare(String(left.importedISO || "")));
       return;
     }
 
@@ -639,7 +679,7 @@
         <label class="checkbox-row"><input id="multiDeviceEnabled" type="checkbox"${config.enabled ? " checked" : ""}><span>Enable multi-device synchronization on this device</span></label>
         <button id="multiDeviceSaveConfigBtn" class="button button-secondary button-small" type="button">Save Sync Setup</button>
       </details>
-      <p class="privacy-note compact-note"><strong>Current phase:</strong> trips, active trip, inspections, vendor-load details, Concur status, timesheet entries/weeks, and durable app preferences synchronize. Actual photo files, the private STA master PDF, and other documents remain device-local until the file-sync phase is enabled.</p>
+      <p class="privacy-note compact-note"><strong>Current phase:</strong> trips, active trip, inspections, vendor-load details, Active Jobs, Facility Profiles, import audit history, Concur status, timesheet entries/weeks, and durable app preferences synchronize. Actual photo files, the private STA master PDF, and other documents remain device-local until the file-sync phase is enabled.</p>
     `;
     const firstCard = settingsSection.querySelector(".settings-card, .warning-card, form, .card");
     if (firstCard) firstCard.insertAdjacentElement("beforebegin", card);

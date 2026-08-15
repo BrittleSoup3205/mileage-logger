@@ -8,6 +8,9 @@ assert.match(sync, /mileage_logger_state_v3/, "Sync must preserve the existing a
 assert.match(sync, /active_trip/, "Active trip must synchronize across devices");
 assert.match(sync, /timesheet_entry/, "Timesheet entries must synchronize");
 assert.match(sync, /inspection/, "Inspection records must synchronize");
+assert.match(sync, /active_job/, "Active Jobs must synchronize");
+assert.match(sync, /facility_profile/, "Facility Profiles must synchronize");
+assert.match(sync, /active_job_import/, "Active Jobs import audit history must synchronize");
 assert.match(sync, /tombstone/, "Deleted records must synchronize safely");
 assert.match(sync, /navigator\.onLine/, "Offline operation must remain supported");
 assert.match(sync, /service_role|sb_secret_/, "Client must reject secret/service-role keys");

@@ -31,7 +31,7 @@
   let inspectionAutosaveTimer = null;
   let inspectionAutosaveInProgress = false;
   const ACTIVE_JOB_DATA = window.MileageActiveJobsData || {};
-  const ACTIVE_JOBS = Array.isArray(ACTIVE_JOB_DATA.activeJobs)
+  const SEED_ACTIVE_JOBS = Array.isArray(ACTIVE_JOB_DATA.activeJobs)
     ? ACTIVE_JOB_DATA.activeJobs.map((job) => ACTIVE_JOB_DATA.normalizedJob ? ACTIVE_JOB_DATA.normalizedJob(job) : { ...job })
     : [];
   const COATING_SYSTEMS = ACTIVE_JOB_DATA.coatingSystems || {};
@@ -271,7 +271,7 @@
         : [];
       parsed.settings.inspectionSchemaVersion = INSPECTION_SCHEMA_VERSION;
       parsed.backup = parsed.backup && typeof parsed.backup === "object" ? parsed.backup : {};
-      return parsed;
+      return window.MileageActiveJobsManagement?.migrateState(parsed, SEED_ACTIVE_JOBS) || parsed;
     } catch (error) {
       console.error("Inspection database could not read mileage state:", error);
       return {
@@ -781,12 +781,38 @@
     }
   }
 
-  function activeJobById(activeJobId) {
-    return ACTIVE_JOBS.find((job) => job.aj === activeJobId) || null;
+  function activeJobsForState(state = readState()) {
+    const jobs = window.MileageActiveJobsManagement?.getActiveJobs(state) || SEED_ACTIVE_JOBS;
+    return jobs.map((job) => ACTIVE_JOB_DATA.normalizedJob ? ACTIVE_JOB_DATA.normalizedJob(job) : { ...job });
+  }
+
+  function activeJobById(activeJobId, state = readState()) {
+    return activeJobsForState(state).find((job) => job.aj === activeJobId) || null;
+  }
+
+  function facilityProfilesForState(state = readState()) {
+    return window.MileageActiveJobsManagement?.getFacilityProfiles(state) || [];
+  }
+
+  function facilityProfileById(state, id) {
+    return facilityProfilesForState(state).find((profile) => profile.id === id) || null;
+  }
+
+  function facilityProfileOptions(state, selectedId = "", job = null) {
+    const profiles = job && window.MileageActiveJobsManagement?.facilityProfilesForJob
+      ? window.MileageActiveJobsManagement.facilityProfilesForJob(state, job)
+      : facilityProfilesForState(state).filter((profile) => (
+        !job || !profile.reportingVendor || sameLocation(profile.reportingVendor, job.reportingVendor) || profile.id === job.defaultFacilityProfileId
+      ));
+    return `<option value="">Temporary visit values only</option>${profiles.map((profile) => `<option value="${escapeHTML(profile.id)}"${profile.id === selectedId ? " selected" : ""}>${escapeHTML(profile.name || profile.shopFacilityName || profile.reportingVendor || profile.id)}</option>`).join("")}`;
   }
 
   function activeJobLocations(state, job) {
     const locations = new Set([job.reportingVendor].filter(Boolean));
+    const profile = window.MileageActiveJobsManagement?.facilityProfileForJob(state, job);
+    [profile?.name, profile?.shopFacilityName, profile?.normalInspectionLocation, ...(profile?.aliases || [])]
+      .filter(Boolean)
+      .forEach((location) => locations.add(location));
     state.settings.inspections.forEach((inspection) => {
       if (inspection.activeJobId !== job.aj) return;
       if (inspection.inspectionLocation || inspection.vendor) {
@@ -863,9 +889,10 @@
     const notesPhotos = $("visitNotesPhotos");
     if (!vendorSelect || !visitSelect || !cards || !conflict || !context || !summary || !linkedPanel || !notesPhotos) return;
 
-    const currentJob = activeJobById(state.settings.currentActiveJobId);
+    const catalog = activeJobsForState(state);
+    const currentJob = activeJobById(state.settings.currentActiveJobId, state);
     const vendors = new Set();
-    ACTIVE_JOBS.filter((job) => job.openClosed === "Open").forEach((job) => {
+    catalog.filter((job) => String(job.openClosed || "").toLowerCase() === "open").forEach((job) => {
       activeJobLocations(state, job).forEach((location) => vendors.add(location));
     });
     inspectionTrips(state).forEach((trip) => {
@@ -901,7 +928,7 @@
         )))
       .sort((a, b) => String(b.modifiedISO || b.createdISO || "").localeCompare(String(a.modifiedISO || a.createdISO || "")));
     const editingInspection = state.settings.inspections.find((inspection) => inspection.id === editingInspectionId) || null;
-    const contextJob = activeJobById(editingInspection?.activeJobId || currentJob?.aj);
+    const contextJob = activeJobById(editingInspection?.activeJobId || currentJob?.aj, state);
     context.innerHTML = `
       <span class="eyebrow">Current context</span>
       <strong>${selectedTrip ? `${escapeHTML(selectedTrip.vendor || "Vendor visit")} — ${escapeHTML(selectedTrip.date || "Saved visit")}` : (selectedVendor ? `${escapeHTML(selectedVendor)} — standalone work` : "Choose a vendor and visit")}</strong>
@@ -945,7 +972,7 @@
     renderWorkspacePhotos(selectedTrip, linkedInspections);
 
     const conflicts = typeof ACTIVE_JOB_DATA.reportingUnitConflicts === "function"
-      ? ACTIVE_JOB_DATA.reportingUnitConflicts(ACTIVE_JOBS)
+      ? ACTIVE_JOB_DATA.reportingUnitConflicts(catalog)
       : [];
     if (conflicts.length) {
       conflict.classList.remove("hidden");
@@ -955,12 +982,14 @@
       conflict.textContent = "";
     }
 
-    const openJobs = ACTIVE_JOBS.filter((job) => job.openClosed === "Open");
-    const matchedJobs = openJobs.filter((job) => selectedVendor && (
-      activeJobLocations(state, job).has(selectedVendor)
-      || (selectedTrip?.projectNumber && sameLocation(job.inspectionNo, selectedTrip.projectNumber))
-    ));
-    const jobs = matchedJobs.length || !selectedTripIsActive ? matchedJobs : openJobs;
+    const openJobs = catalog.filter((job) => String(job.openClosed || "").toLowerCase() === "open");
+    const matchedJobs = window.MileageActiveJobsManagement?.matchingJobsForVisit
+      ? window.MileageActiveJobsManagement.matchingJobsForVisit(state, selectedTrip, selectedVendor)
+      : openJobs.filter((job) => selectedVendor && (
+        activeJobLocations(state, job).has(selectedVendor)
+        || (selectedTrip?.projectNumber && sameLocation(job.inspectionNo, selectedTrip.projectNumber))
+      ));
+    const jobs = matchedJobs;
     cards.innerHTML = jobs.length ? jobs.map((job) => {
       const current = job.aj === contextJob?.aj;
       const visitRecords = linkedInspections.filter((inspection) => inspection.activeJobId === job.aj);
@@ -974,7 +1003,12 @@
         <p class="inspection-autosave-status">${visitRecords.length ? `${visitRecords.length} linked inspection${visitRecords.length === 1 ? "" : "s"}${draftCount ? ` • ${draftCount} draft` : ""}` : (selectedTrip ? "Not yet linked to this visit" : "Standalone available")}</p>
         <button class="button ${current ? "button-secondary" : "inspection-button"} button-small" type="button" data-work-active-job="${escapeHTML(job.aj)}">${visitRecords.length ? "Open Linked Inspection" : (selectedTrip ? "Add Job to This Visit" : "Start Standalone Inspection")}</button>
       </article>`;
-    }).join("") : `<div class="inspection-empty">Choose a vendor/location to see its open Active Jobs.</div>`;
+    }).join("") : `<div class="active-job-no-match">
+      <p class="eyebrow">NO ACTIVE JOB FOUND</p>
+      <strong>No reasonable Active Job match was found for ${escapeHTML(selectedVendor || selectedTrip?.vendor || "this visit")}.</strong>
+      <p>Unrelated open jobs are intentionally not suggested. You can continue without an AJ and assign the saved inspection later.</p>
+      <button id="workPendingJobBtn" class="button inspection-button" type="button">Work as Pending / Unassigned Job</button>
+    </div>`;
     if ($("newInspectionBtn")) $("newInspectionBtn").textContent = selectedTrip ? "Add Inspection to Visit" : "New Inspection in This Context";
   }
 
@@ -1402,7 +1436,9 @@
     const values = inspection || {};
     const activeJob = options.standalone
       ? null
-      : activeJobById(options.activeJobId || values.activeJobId || state.settings.currentActiveJobId);
+      : activeJobById(options.activeJobId || values.activeJobId || trip?.activeJobId || state.settings.currentActiveJobId, state);
+    const selectedFacilityProfileId = values.facilityProfileId || trip?.facilityProfileId || activeJob?.defaultFacilityProfileId || "";
+    const facilityProfile = facilityProfileById(state, selectedFacilityProfileId);
     let workspaceChanged = false;
     if (activeJob && state.settings.currentActiveJobId !== activeJob.aj) {
       state.settings.currentActiveJobId = activeJob.aj;
@@ -1421,7 +1457,7 @@
 
     const date = values.date || (trip ? inputDateFromTrip(trip.date) : todayInputValue());
     const customer = values.customer ?? activeJob?.client ?? trip?.customer ?? "";
-    const vendor = values.inspectionLocation ?? values.vendor ?? trip?.vendor ?? activeJob?.reportingVendor ?? "";
+    const vendor = values.inspectionLocation ?? values.vendor ?? trip?.vendor ?? facilityProfile?.normalInspectionLocation ?? facilityProfile?.shopFacilityName ?? activeJob?.reportingVendor ?? "";
     const projectNumber = values.projectNumber ?? activeJob?.inspectionNo ?? trip?.projectNumber ?? "";
     const activity = values.activity ?? trip?.purpose ?? values.inspectionType ?? "Inspection";
     const startTime = values.startTime ?? trip?.startTime ?? "";
@@ -1441,9 +1477,15 @@
       <form id="inspectionForm" autocomplete="off">
         <input id="inspectionActiveJobId" type="hidden" value="${escapeHTML(activeJob?.aj || values.activeJobId || "")}">
         <div class="active-job-current-banner${activeJob ? "" : " no-job"}">
-          <span class="eyebrow">${activeJob ? "Current Active Job — verify before notes or photos" : "No Active Job selected"}</span>
+          <span class="eyebrow">${activeJob ? "Current Active Job — verify before notes or photos" : "NO ACTIVE JOB FOUND"}</span>
           <strong>${activeJob ? `${escapeHTML(activeJob.aj)} — ${escapeHTML(activeJob.inspectionNo)} — ${escapeHTML(activeJob.projectName)}` : "Standalone / unassigned inspection"}</strong>
-          <small>${activeJob ? `Reporting vendor: ${escapeHTML(activeJob.reportingVendor)} • Notes and photos attach to this AJ and this inspection record.` : "Choose an AJ in the Vendor Workspace when this work belongs to an Active Job."}</small>
+          <small>${activeJob ? `Reporting vendor: ${escapeHTML(activeJob.reportingVendor)} • Notes and photos attach to this AJ and this inspection record.` : "This inspection autosaves and keeps its trip, notes, photos, loads, and follow-ups. Assign it after the missing AJ is imported."}</small>
+          ${activeJob ? "" : `<div class="pending-job-assignment"><select id="pendingActiveJobSelect"><option value="">Assign later…</option>${activeJobsForState(state).filter((job) => String(job.openClosed || "").toLowerCase() === "open").map((job) => `<option value="${escapeHTML(job.aj)}">${escapeHTML(job.aj)} — ${escapeHTML(job.inspectionNo)} — ${escapeHTML(job.reportingVendor)}</option>`).join("")}</select><button id="assignPendingInspectionBtn" class="button button-secondary button-small" type="button">Assign to Active Job</button></div>`}
+        </div>
+        <div class="facility-visit-controls">
+          <label>Facility Profile<select id="inspectionFacilityProfileId">${facilityProfileOptions(state, selectedFacilityProfileId, activeJob)}</select></label>
+          <button id="saveVisitToFacilityProfileBtn" class="button button-secondary button-small" type="button"${selectedFacilityProfileId ? "" : " disabled"}>Save to Facility Profile</button>
+          <small>Use Different Facility changes this visit only. Save to Facility Profile is the explicit permanent action.</small>
         </div>
         <label>
           Related mileage trip
@@ -1456,7 +1498,7 @@
         <div class="inspection-form-grid">
           <label>Date<input id="inspectionDate" type="date" required value="${escapeHTML(date)}"></label>
           <label>Client<input id="inspectionCustomer" list="customerList" required value="${escapeHTML(customer)}" placeholder="Example: Shell"></label>
-          <label>Reporting vendor<input id="inspectionReportingVendor" required value="${escapeHTML(values.reportingVendor || activeJob?.reportingVendor || vendor || "")}" placeholder="Vendor used on the S&B report"${activeJob ? " readonly" : ""}></label>
+          <label>Reporting vendor<input id="inspectionReportingVendor" required value="${escapeHTML(values.reportingVendor || activeJob?.reportingVendor || facilityProfile?.reportingVendor || vendor || "")}" placeholder="Vendor used on the S&B report"${activeJob ? " readonly" : ""}></label>
           <label>Inspection location / subvendor<input id="inspectionVendor" list="vendorList" required value="${escapeHTML(vendor)}" placeholder="Where the inspection occurred"></label>
           <label>S&B inspection number / project<input id="inspectionProject" list="inspectionProjectList" value="${escapeHTML(projectNumber)}" placeholder="Example: E10379-424"></label>
           <label>Project name<input id="inspectionProjectName" value="${escapeHTML(values.projectName || activeJob?.projectName || "")}" placeholder="Project or reporting-unit description"></label>
@@ -1547,7 +1589,7 @@
         <div class="form-actions wrap">
           <button class="button inspection-button" type="submit">${editingInspectionWasExisting ? "Save Changes" : "Save Inspection"}</button>
           <button id="cancelInspectionFormBtn" class="button button-secondary" type="button">Cancel</button>
-          <span id="inspectionAutosaveStatus" class="inspection-autosave-status">${activeJob ? "Draft autosaves while this AJ is open." : ""}</span>
+          <span id="inspectionAutosaveStatus" class="inspection-autosave-status">${activeJob ? "Draft autosaves while this AJ is open." : "Pending / unassigned drafts autosave normally."}</span>
         </div>
       </form>
     `;
@@ -1772,12 +1814,77 @@
       .filter((item) => item.action);
   }
 
+  function setFormValueIfBlank(id, value) {
+    const input = $(id);
+    if (!input || input.value.trim() || !String(value || "").trim()) return;
+    input.value = String(value);
+  }
+
+  function applyFacilityProfileToInspectionForm(profile) {
+    if (!profile) return;
+    setFormValueIfBlank("inspectionReportingVendor", profile.reportingVendor);
+    setFormValueIfBlank("inspectionVendor", profile.normalInspectionLocation || profile.shopFacilityName);
+    setFormValueIfBlank("inspectionObservations", profile.inspectionDefaults);
+    setFormValueIfBlank("inspectionSummary", profile.reportDefaults);
+    scheduleInspectionAutosave();
+  }
+
+  function assignPendingInspectionToJob() {
+    const state = readState();
+    const activeJob = activeJobById($("pendingActiveJobSelect")?.value, state);
+    if (!activeJob) {
+      window.alert("Choose the Active Job to assign.");
+      return;
+    }
+    const existing = state.settings.inspections.find((inspection) => inspection.id === editingInspectionId) || null;
+    $("inspectionActiveJobId").value = activeJob.aj;
+    setFormValueIfBlank("inspectionProject", activeJob.inspectionNo);
+    setFormValueIfBlank("inspectionCustomer", activeJob.client || activeJob.workbookClient);
+    setFormValueIfBlank("inspectionReportingVendor", activeJob.reportingVendor);
+    setFormValueIfBlank("inspectionProjectName", activeJob.projectName);
+    setFormValueIfBlank("inspectionPoJob", activeJob.sbOrder);
+    setFormValueIfBlank("inspectionVendorJob", activeJob.vendorJobs);
+    const profileId = existing?.facilityProfileId || activeJob.defaultFacilityProfileId || "";
+    if ($("inspectionFacilityProfileId") && profileId) $("inspectionFacilityProfileId").value = profileId;
+    applyFacilityProfileToInspectionForm(facilityProfileById(state, profileId));
+    const collected = collectInspectionFromForm(existing, existing?.status || "Draft");
+    const inspection = window.MileageActiveJobsManagement?.assignPendingInspectionRecord
+      ? window.MileageActiveJobsManagement.assignPendingInspectionRecord(collected, activeJob, facilityProfileById(state, profileId))
+      : collected;
+    persistInspection(inspection);
+    editingInspectionId = inspection.id;
+    editingInspectionWasExisting = true;
+    openInspectionForm(inspection);
+    showInspectionToast(`Pending inspection assigned to ${activeJob.aj} without creating a duplicate.`);
+  }
+
+  function saveCurrentVisitToFacilityProfile() {
+    const profileId = $("inspectionFacilityProfileId")?.value || "";
+    if (!profileId) {
+      window.alert("Choose a Facility Profile first.");
+      return;
+    }
+    const state = readState();
+    const profile = facilityProfileById(state, profileId);
+    if (!profile) return;
+    const location = $("inspectionVendor")?.value.trim() || "";
+    const reportingVendor = $("inspectionReportingVendor")?.value.trim() || "";
+    if (!window.confirm(`Permanently update Facility Profile “${profile.name || profile.shopFacilityName}” with this visit's reporting vendor and inspection location?`)) return;
+    profile.reportingVendor = reportingVendor || profile.reportingVendor;
+    profile.normalInspectionLocation = location || profile.normalInspectionLocation;
+    profile.modifiedISO = nowISO();
+    window.MileageActiveJobsManagement?.writeState(state);
+    showInspectionToast("Facility Profile updated intentionally. This visit remains unchanged.");
+  }
+
   function collectInspectionFromForm(existing = null, statusOverride = null) {
     if (!$("inspectionForm")) return null;
     const state = readState();
     const selectedTripId = $("inspectionTripId")?.value || "";
     const trip = getTripById(state, selectedTripId);
-    const activeJob = activeJobById($("inspectionActiveJobId")?.value);
+    const activeJob = activeJobById($("inspectionActiveJobId")?.value, state);
+    const facilityProfileId = $("inspectionFacilityProfileId")?.value || "";
+    const facilityProfile = facilityProfileById(state, facilityProfileId);
     const createdISO = existing?.createdISO || nowISO();
     const loads = collectLoads();
     const inspection = {
@@ -1787,7 +1894,8 @@
       sbInspectionNo: activeJob?.inspectionNo || $("inspectionProject")?.value.trim() || "",
       reportingVendor: $("inspectionReportingVendor")?.value.trim() || activeJob?.reportingVendor || "",
       inspectionLocation: $("inspectionVendor")?.value.trim() || "",
-      facility: activeJob?.facility || existing?.facility || "",
+      facility: facilityProfile?.shopFacilityName || activeJob?.facility || existing?.facility || "",
+      facilityProfileId,
       projectName: $("inspectionProjectName")?.value.trim() || activeJob?.projectName || "",
       tripId: selectedTripId || null,
       tripSnapshot: trip ? tripSnapshot(trip) : (existing?.tripId === selectedTripId ? existing.tripSnapshot : null),
@@ -1854,7 +1962,7 @@
       if (index >= 0) inspections[index] = inspection;
       else inspections.push(inspection);
 
-      nextState.settings.currentActiveJobId = inspection.activeJobId || nextState.settings.currentActiveJobId || "";
+      nextState.settings.currentActiveJobId = inspection.activeJobId || "";
       nextState.settings.activeJobsWorkspaceVendor = inspection.inspectionLocation || inspection.reportingVendor || nextState.settings.activeJobsWorkspaceVendor || "";
       nextState.settings.activeJobsWorkspaceTripId = inspection.tripId || "__standalone__";
       nextState.settings.customers = Array.isArray(nextState.settings.customers) ? nextState.settings.customers : [];
@@ -1868,12 +1976,11 @@
 
   function scheduleInspectionAutosave() {
     clearTimeout(inspectionAutosaveTimer);
-    if (!$("inspectionActiveJobId")?.value) return;
     inspectionAutosaveTimer = setTimeout(() => saveInspectionDraft({ silent: true }), 650);
   }
 
   function saveInspectionDraft(options = {}) {
-    if (inspectionAutosaveInProgress || !$("inspectionForm") || !$("inspectionActiveJobId")?.value) return false;
+    if (inspectionAutosaveInProgress || !$("inspectionForm")) return false;
     const state = readState();
     const existing = state.settings.inspections.find((inspection) => inspection.id === editingInspectionId) || null;
     if (existing && existing.status !== "Draft") return false;
@@ -1889,7 +1996,7 @@
     editingInspectionId = inspection.id;
     originalPhotoIds = new Set(currentPhotos.map((photo) => photo.id));
     const status = $("inspectionAutosaveStatus");
-    if (status) status.textContent = `Draft autosaved ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })} for ${inspection.activeJobId}.`;
+    if (status) status.textContent = `Draft autosaved ${new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}${inspection.activeJobId ? ` for ${inspection.activeJobId}` : " as pending / unassigned"}.`;
     renderActiveJobsWorkspace();
     return true;
   }
@@ -3426,6 +3533,8 @@
       activeTrip: state.activeTrip ? [state.activeTrip.id, state.activeTrip.startISO, state.activeTrip.vendor, state.activeTrip.projectNumber, state.activeTrip.purpose, state.activeTrip.notes, (state.activeTrip.photos || []).map((photo) => [photo.id, photo.caption])] : null,
       trips: state.trips.map((trip) => [trip.id, trip.endISO, trip.miles, trip.notes, (trip.photos || []).map((photo) => [photo.id, photo.caption])]),
       inspections: state.settings.inspections.map((inspection) => [inspection.id, inspection.modifiedISO]),
+      activeJobsCatalog: activeJobsForState(state).map((job) => [job.aj, job.modifiedISO, job.openClosed, job.defaultFacilityProfileId]),
+      facilityProfiles: facilityProfilesForState(state).map((profile) => [profile.id, profile.modifiedISO]),
       ignored: state.settings.inspectionIgnoredTripIds,
       activeJob: [state.settings.currentActiveJobId, state.settings.activeJobsWorkspaceVendor, state.settings.activeJobsWorkspaceTripId],
       backup: [state.backup?.pendingTripCount, state.backup?.pendingChangeCount, state.backup?.lastConfirmedISO]
@@ -3498,6 +3607,23 @@
         state.settings.activeJobsWorkspaceVendor = trip.vendor || state.settings.activeJobsWorkspaceVendor || "";
         writeState(state);
         showInspectionSection(false, trip.id);
+        return;
+      }
+
+      if (event.target.closest("#workPendingJobBtn")) {
+        const state = readState();
+        const tripId = $("activeJobsVisit")?.value || state.activeTrip?.id || "";
+        openInspectionForm(null, tripId, { standalone: true });
+        return;
+      }
+
+      if (event.target.closest("#assignPendingInspectionBtn")) {
+        assignPendingInspectionToJob();
+        return;
+      }
+
+      if (event.target.closest("#saveVisitToFacilityProfileBtn")) {
+        saveCurrentVisitToFacilityProfile();
         return;
       }
 
@@ -3751,6 +3877,13 @@
         if (trip?.vendor) state.settings.activeJobsWorkspaceVendor = trip.vendor;
         writeState(state);
         renderActiveJobsWorkspace();
+        return;
+      }
+      if (event.target.id === "inspectionFacilityProfileId") {
+        const profile = facilityProfileById(readState(), event.target.value);
+        const saveButton = $("saveVisitToFacilityProfileBtn");
+        if (saveButton) saveButton.disabled = !profile;
+        applyFacilityProfileToInspectionForm(profile);
         return;
       }
       if (event.target.id === "inspectionTemplateFileInput") {

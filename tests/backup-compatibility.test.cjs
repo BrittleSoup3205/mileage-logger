@@ -9,6 +9,7 @@ const appSource = fs.readFileSync(path.join(root, "app.js"), "utf8");
 const inspectionsSource = fs.readFileSync(path.join(root, "inspections.js"), "utf8");
 const mediaSource = fs.readFileSync(path.join(root, "media-store.js"), "utf8");
 const serviceWorkerSource = fs.readFileSync(path.join(root, "service-worker.js"), "utf8");
+const activeJobsManagementSource = fs.readFileSync(path.join(root, "active-jobs-management.js"), "utf8");
 const context = { window: {} };
 vm.runInNewContext(workflowSource, context, { filename: "workflow-data.js" });
 const data = context.window.MileageWorkflowData;
@@ -17,6 +18,7 @@ assert.match(appSource, /mileage_logger_state_v3/, "Main Local Storage key must 
 assert.match(inspectionsSource, /mileage_logger_state_v3/, "Inspection Local Storage key must remain unchanged");
 assert.match(mediaSource, /MileageLoggerInspectionMedia/, "Existing media IndexedDB name must remain unchanged");
 assert.match(inspectionsSource, /MileageLoggerPrivateFiles/, "Existing private-files IndexedDB name must remain unchanged");
+assert.match(activeJobsManagementSource, /mileage_logger_state_v3/, "Active Jobs management must preserve the existing Local Storage key");
 
 const legacy = {
   activeTrip: { id: "active-1", startOdometer: 100, routePoints: [{ latitude: 29.9, longitude: -95.1 }] },
@@ -65,6 +67,10 @@ assert.equal(restored.trips[0].photos[0].name, "IMG_0001.JPG");
 assert.equal(restored.settings.inspections[0].loads[0].identifier, "LOAD 00-A/7");
 assert.equal(restored.workflow.timesheetEntries[0].activity, "Report Writing");
 assert.equal(restored.workflow.mileageRate, "0.70");
+assert.match(appSource, /activeJobs: parsed\?\.activeJobs/, "Restore sanitization must retain synchronized Active Jobs");
+assert.match(appSource, /facilityProfiles: parsed\?\.facilityProfiles/, "Restore sanitization must retain Facility Profiles");
+assert.match(appSource, /activeJobImports: parsed\?\.activeJobImports/, "Restore sanitization must retain import audit history");
+assert.equal(restored.settings.inspections[0].activeJobId || "", "", "Legacy inspections without an AJ must remain unassigned");
 
 for (const filename of ["app-data.json", "mileage-log.csv", "concur-reimbursement.csv", "weekly-timesheet.csv"]) {
   assert.ok(appSource.includes(filename), `Backup package must include ${filename}`);

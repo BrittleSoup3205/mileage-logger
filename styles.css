@@ -961,3 +961,50 @@ hr {
   .workflow-settings-row .button,
   .week-navigation .button { flex: 1 1 42%; }
 }
+
+.active-jobs-management-card { border: 2px solid color-mix(in srgb, var(--info), transparent 45%); }
+.active-jobs-import-review,
+.active-jobs-management-details { margin-top: 14px; padding: 13px; border: 1px solid var(--line); border-radius: 13px; background: color-mix(in srgb, var(--info), transparent 97%); }
+.active-jobs-management-details > summary { cursor: pointer; font-weight: 800; }
+.active-jobs-review-counts { display: grid; grid-template-columns: repeat(5, minmax(90px, 1fr)); gap: 7px; margin: 10px 0; }
+.active-jobs-review-counts span { padding: 9px; border-radius: 9px; text-align: center; background: var(--card); border: 1px solid var(--line); }
+.active-jobs-review-list { display: grid; gap: 8px; max-height: 430px; overflow: auto; }
+.active-jobs-review-item { display: grid; gap: 3px; padding: 10px; border-left: 5px solid var(--line); border-radius: 9px; background: var(--card); }
+.active-jobs-review-item > span { font-size: .76rem; font-weight: 900; letter-spacing: .07em; }
+.active-jobs-review-item p { margin: 3px 0 0; color: var(--warning); }
+.active-jobs-review-item label { margin-top: 7px; }
+.active-jobs-new { border-color: var(--success) !important; }
+.active-jobs-updated { border-color: var(--info) !important; }
+.active-jobs-closed { border-color: var(--muted) !important; }
+.active-jobs-no-change { opacity: .76; }
+.active-jobs-conflict { border-color: var(--warning) !important; background: color-mix(in srgb, var(--warning), transparent 93%) !important; }
+.facility-profile-form { margin-top: 12px; }
+.facility-profile-list,
+.active-job-default-list,
+.active-jobs-import-history { display: grid; gap: 8px; margin-top: 12px; }
+.facility-profile-list article,
+.active-job-default-list article,
+.active-jobs-import-history article { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px; border-radius: 10px; background: var(--card); border: 1px solid var(--line); }
+.facility-profile-list small,
+.active-job-default-list small,
+.active-jobs-import-history small { display: block; margin-top: 3px; color: var(--muted); }
+.active-job-default-list label { min-width: min(310px, 100%); }
+.active-job-profile-links { display: grid; gap: 8px; min-width: min(360px, 100%); }
+.active-job-profile-links select[multiple] { min-height: 76px; }
+.active-jobs-empty { padding: 12px; color: var(--muted); text-align: center; }
+.active-job-no-match { padding: 14px; border: 2px solid var(--warning); border-radius: 12px; background: color-mix(in srgb, var(--warning), transparent 93%); }
+.active-job-no-match .eyebrow { color: var(--warning); }
+.pending-job-assignment,
+.facility-visit-controls { display: flex; align-items: end; flex-wrap: wrap; gap: 9px; margin-top: 10px; }
+.pending-job-assignment select { flex: 1 1 260px; }
+.facility-visit-controls label { flex: 1 1 260px; margin: 0; }
+.facility-visit-controls small { flex-basis: 100%; color: var(--muted); }
+
+@media (max-width: 760px) {
+  .active-jobs-review-counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .facility-profile-list article,
+  .active-job-default-list article,
+  .active-jobs-import-history article { align-items: stretch; flex-direction: column; }
+  .pending-job-assignment .button,
+  .facility-visit-controls .button { width: 100%; }
+}

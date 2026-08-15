@@ -58,6 +58,11 @@
   let preparedBackupSession = null;
   let preparedActiveJobsActivity = null;
 
+  function migrateCompleteState(candidate) {
+    const workflowMigrated = window.MileageWorkflowData?.migrateState(candidate) || candidate;
+    return window.MileageActiveJobsManagement?.migrateState(workflowMigrated) || workflowMigrated;
+  }
+
   function defaultState() {
     const base = {
       activeTrip: null,
@@ -66,7 +71,7 @@
       backup: { ...DEFAULT_BACKUP_STATE },
       settings: { ...DEFAULT_SETTINGS, vendorLocations: [] }
     };
-    return window.MileageWorkflowData?.migrateState(base) || base;
+    return migrateCompleteState(base);
   }
 
   function sanitizeState(parsed) {
@@ -85,9 +90,13 @@
           ? parsed.settings.vendorLocations
           : []
       },
-      workflow: parsed?.workflow
+      workflow: parsed?.workflow,
+      activeJobs: parsed?.activeJobs,
+      activeJobsInitializedISO: parsed?.activeJobsInitializedISO,
+      facilityProfiles: parsed?.facilityProfiles,
+      activeJobImports: parsed?.activeJobImports
     };
-    return window.MileageWorkflowData?.migrateState(sanitized) || sanitized;
+    return migrateCompleteState(sanitized);
   }
 
   function loadState() {
@@ -1659,14 +1668,14 @@
     const tripPhotos = tripPhotoMetadata();
     return {
       backupFormat: "MileageLoggerDataBackup",
-      backupVersion: 5,
+      backupVersion: 6,
       createdISO: new Date().toISOString(),
       tripCount: state.trips.length,
       photoCount: inspectionPhotos.length,
       tripPhotoCount: tripPhotos.length,
       photoReferenceCount: new Set([...inspectionPhotos, ...tripPhotos].map((photo) => photo.id)).size,
       photoManifest: inspectionPhotos,
-      note: "This data ZIP includes app-data.json plus mileage, Concur reimbursement, and weekly timesheet CSV spreadsheets. It contains mileage data, inspection records, vendor loads, GPS data, reimbursement history, timesheet entries, settings, and photo filenames and descriptions. Actual image files are not included; retain the originals in iPhone Photos. The privately imported STA master is also excluded.",
+      note: "This data ZIP includes app-data.json plus mileage, Concur reimbursement, and weekly timesheet CSV spreadsheets. It contains mileage data, inspection records, vendor loads, GPS data, reimbursement history, timesheet entries, synchronized Active Jobs, Facility Profiles, Active Jobs import audit metadata, settings, and photo filenames and descriptions. Actual image files are not included; retain the originals in iPhone Photos. The privately imported STA master is also excluded.",
       appState: state
     };
   }
@@ -1699,7 +1708,10 @@
         completedTrips: state.trips.length,
         activeTrips: state.activeTrip ? 1 : 0,
         inspections: Array.isArray(state.settings?.inspections) ? state.settings.inspections.length : 0,
-        photoReferences: photoReferenceCount()
+        photoReferences: photoReferenceCount(),
+        activeJobs: Array.isArray(state.activeJobs) ? state.activeJobs.length : 0,
+        facilityProfiles: Array.isArray(state.facilityProfiles) ? state.facilityProfiles.length : 0,
+        activeJobImports: Array.isArray(state.activeJobImports) ? state.activeJobImports.length : 0
       }
     );
   }
@@ -1764,6 +1776,8 @@
       <span>Mileage log spreadsheet included (mileage-log.csv)</span>
       <span>Concur reimbursement spreadsheet included (concur-reimbursement.csv)</span>
       <span>Weekly timesheet spreadsheet included (weekly-timesheet.csv)</span>
+      <span>${summary.activeJobs} Active Job record${summary.activeJobs === 1 ? "" : "s"} and ${summary.facilityProfiles} Facility Profile${summary.facilityProfiles === 1 ? "" : "s"}</span>
+      <span>${summary.activeJobImports} Active Jobs import audit record${summary.activeJobImports === 1 ? "" : "s"}</span>
       <span>Actual image files are not included; retain originals in iPhone Photos</span>
       <span>Settings and saved lists</span>
       <span>File size: ${formatFileSize(summary.bytes)}</span>
@@ -2427,6 +2441,8 @@
       startTime: now.time,
       startOdometer,
       projectNumber,
+      activeJobId: $("startActiveJobId")?.value || "",
+      facilityProfileId: $("startFacilityProfileId")?.value || "",
       customer,
       vendor,
       purpose,
