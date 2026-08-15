@@ -1,12 +1,14 @@
-const CACHE_NAME = "mileage-logger-active-trip-inspection-v54";
+const CACHE_NAME = "mileage-logger-multi-device-v56";
 const APP_FILES = [
   "./",
   "./index.html?v=workflow-upgrades-2",
   "./styles.css?v=workflow-upgrades-2",
+  "./multi-device.css?v=multi-device-1",
   "./workflow-data.js?v=workflow-upgrades-2",
   "./app.js?v=workflow-upgrades-2",
   "./inspections.js?v=workflow-upgrades-2",
   "./workflow-queues.js?v=workflow-upgrades-2",
+  "./sync-engine.js?v=multi-device-1",
   "./media-store.js?v=visit-workspace-5",
   "./active-jobs-data.js?v=visit-workspace-5",
   "./vendor/pdf-lib.min.js",
