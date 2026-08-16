@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const vm = require("node:vm");
+const management = require("../active-jobs-management.js");
 
 const syncSource = fs.readFileSync("sync-engine.js", "utf8");
 const activeJobsSource = fs.readFileSync("active-jobs-management.js", "utf8");
@@ -167,6 +168,28 @@ async function testExistingLocalStateStillPushesNormally() {
   assert.ok(harness.recordPushes.some((row) => row.record_type === "trip" && row.record_id === localTrip.id), "Existing local changes must keep uploading normally");
 }
 
+async function testRepairedActiveJobUsesNormalSynchronization() {
+  const state = {
+    activeTrip: null,
+    trips: [],
+    lastOdometer: "",
+    backup: {},
+    settings: { inspections: [] },
+    workflow: { timesheetEntries: [], timesheetWeeks: {} },
+    activeJobs: [{ aj: "AJ-014", inspectionNo: "E10367-408", reportingVendor: "Pipe & Steel", openClosed: "" }],
+    facilityProfiles: [],
+    activeJobImports: []
+  };
+  management.repairBlankOpenClosedFromSeed(state, [
+    { aj: "AJ-014", inspectionNo: "E10367-408", reportingVendor: "Pipe & Steel", openClosed: "Open" }
+  ]);
+  const harness = makeHarness({ localState: JSON.stringify(state), remoteRows: [] });
+
+  assert.equal(await harness.api.syncNow({ reason: "test" }), true);
+  const pushed = harness.recordPushes.find((row) => row.record_type === "active_job" && row.record_id === "AJ-014");
+  assert.equal(pushed?.payload?.openClosed, "Open", "The in-place AJ repair must upload through the existing active_job sync record");
+}
+
 function testActiveJobsModuleDoesNotMaterializeEmptyState() {
   const storage = new Map();
   let readyHandler = null;
@@ -192,11 +215,50 @@ function testActiveJobsModuleDoesNotMaterializeEmptyState() {
   assert.equal(localStorage.getItem(APP_STATE_KEY), null, "Upgrade #6 initialization must not defeat empty-device cloud bootstrap by writing seed state first");
 }
 
+function testActiveJobsModuleRepairsExistingStoredCatalog() {
+  const existingInspection = { id: "inspection-nde", activeJobId: "", tripId: "trip-pipe", activity: "NDE Review", summary: "RT film review" };
+  const storage = new Map([[APP_STATE_KEY, JSON.stringify({
+    activeJobs: [{ aj: "AJ-014", inspectionNo: "E10367-408", reportingVendor: "Pipe & Steel", openClosed: "" }],
+    settings: { inspections: [existingInspection] },
+    trips: [{ id: "trip-pipe", projectNumber: "E10367-408", vendor: "Pipe & Steel" }],
+    backup: { pendingChangeCount: 2 }
+  })]]);
+  let readyHandler = null;
+  const localStorage = {
+    getItem: (key) => storage.has(key) ? storage.get(key) : null,
+    setItem: (key, value) => storage.set(key, String(value))
+  };
+  const document = {
+    readyState: "loading",
+    getElementById: () => null,
+    addEventListener: (type, callback) => { if (type === "DOMContentLoaded") readyHandler = callback; }
+  };
+  const window = {
+    document,
+    localStorage,
+    addEventListener() {},
+    dispatchEvent() {},
+    setTimeout: (callback) => { callback(); return 1; },
+    MileageActiveJobsData: { activeJobs: [{ aj: "AJ-014", inspectionNo: "E10367-408", reportingVendor: "Pipe & Steel", openClosed: "Open" }] },
+    crypto: { randomUUID: () => "test-id" }
+  };
+  const CustomEvent = class CustomEvent { constructor(type, options) { this.type = type; this.detail = options?.detail; } };
+  vm.runInContext(activeJobsSource, vm.createContext({ window, document, localStorage, CustomEvent, console, Date }), { filename: "active-jobs-management.js" });
+  readyHandler();
+  const repaired = JSON.parse(localStorage.getItem(APP_STATE_KEY));
+  assert.equal(repaired.activeJobs[0].openClosed, "Open", "Existing stored state must be repaired automatically when the hotfix initializes");
+  assert.equal(repaired.activeJobs.length, 1, "Automatic repair must not duplicate the AJ");
+  assert.deepEqual(repaired.settings.inspections[0], existingInspection, "Automatic catalog repair must leave the unassigned inspection untouched");
+  assert.equal(repaired.backup.pendingChangeCount, 2, "The migration repair must not alter existing backup accounting");
+}
+
 (async () => {
   testActiveJobsModuleDoesNotMaterializeEmptyState();
+  testActiveJobsModuleRepairsExistingStoredCatalog();
   await testEmptyDeviceBootstrapsFromCloudWithoutPush();
   await testOfflineEmptyDeviceRemainsUntouched();
   await testExistingLocalStateStillPushesNormally();
+  await testRepairedActiveJobUsesNormalSynchronization();
   console.log("Multi-device empty-device bootstrap checks passed.");
 })().catch((error) => {
   console.error(error);

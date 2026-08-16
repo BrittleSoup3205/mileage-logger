@@ -87,6 +87,36 @@ const blankIdentityApplied = management.applyImportReview({ activeJobs: structur
 assert.equal(blankIdentityApplied.state.activeJobs[0].inspectionNo, "E-1", "Applying other row changes must never erase a stored inspection number");
 assert.equal(blankIdentityApplied.state.activeJobs[0].reportingVendor, "Vendor A", "Applying other row changes must never erase a stored Reporting Vendor");
 
+const existingOpenBlankSource = management.buildImportReview([
+  { aj: "AJ-OPEN", inspectionNo: "E-OPEN", reportingVendor: "Vendor Open", openClosed: "Open" }
+], [
+  { aj: "AJ-OPEN", inspectionNo: "E-OPEN", reportingVendor: "Vendor Open", openClosed: "" }
+]);
+assert.equal(existingOpenBlankSource.counts.CONFLICT, 0, "A blank source status must not block an existing Open AJ");
+assert.equal(existingOpenBlankSource.items[0].job.openClosed, "Open", "A blank source status must preserve an existing Open value");
+assert.match(existingOpenBlankSource.items[0].warnings.join(" "), /Source blank.*existing Open \/ Closed value preserved/i);
+const existingOpenBlankApplied = management.applyImportReview({ activeJobs: [{ aj: "AJ-OPEN", inspectionNo: "E-OPEN", reportingVendor: "Vendor Open", openClosed: "Open" }] }, existingOpenBlankSource);
+assert.equal(existingOpenBlankApplied.state.activeJobs[0].openClosed, "Open", "Applying a blank workbook status must not remove Open");
+
+const existingClosedBlankSource = management.buildImportReview([
+  { aj: "AJ-CLOSED", inspectionNo: "E-CLOSED", reportingVendor: "Vendor Closed", openClosed: "Closed" }
+], [
+  { aj: "AJ-CLOSED", inspectionNo: "E-CLOSED", reportingVendor: "Vendor Closed", openClosed: "" }
+]);
+assert.equal(existingClosedBlankSource.counts.CONFLICT, 0, "A blank source status must not block an existing Closed AJ");
+assert.equal(existingClosedBlankSource.items[0].job.openClosed, "Closed", "A blank source status must preserve an existing Closed value");
+assert.match(existingClosedBlankSource.items[0].warnings.join(" "), /Source blank.*existing Open \/ Closed value preserved/i);
+
+assert.equal(review.items.find((item) => item.aj === "AJ-003").classification, "CLOSED", "An explicit Closed workbook value must remain a deliberate close");
+const explicitOpenReview = management.buildImportReview([
+  { aj: "AJ-REOPEN", inspectionNo: "E-REOPEN", reportingVendor: "Vendor Reopen", openClosed: "Closed" }
+], [
+  { aj: "AJ-REOPEN", inspectionNo: "E-REOPEN", reportingVendor: "Vendor Reopen", openClosed: "Open" }
+]);
+assert.equal(explicitOpenReview.items[0].classification, "UPDATED", "An explicit Open workbook value must be honored by the existing update rules");
+const explicitOpenApplied = management.applyImportReview({ activeJobs: [{ aj: "AJ-REOPEN", inspectionNo: "E-REOPEN", reportingVendor: "Vendor Reopen", openClosed: "Closed" }] }, explicitOpenReview);
+assert.equal(explicitOpenApplied.state.activeJobs[0].openClosed, "Open");
+
 const newMissingVendor = management.buildImportReview([], [
   { aj: "AJ-NEW", inspectionNo: "E-NEW", reportingVendor: "", projectName: "Incomplete new job" }
 ]);
@@ -138,6 +168,50 @@ assert.equal(seeded.settings.inspections[0].activeJobId, "AJ-001", "Existing ins
 assert.equal(seeded.trips[0].projectNumber, "000123");
 const seededAgain = management.migrateState(seeded, current);
 assert.equal(seededAgain.activeJobs.length, 3, "First-run migration must not duplicate jobs");
+
+const recoverySeed = [
+  { aj: "AJ-012", inspectionNo: "E10372-410", reportingVendor: "Cembell", openClosed: "" },
+  { aj: "AJ-013", inspectionNo: "E10379-410", reportingVendor: "Trade", openClosed: "" },
+  { aj: "AJ-014", inspectionNo: "E10367-408", reportingVendor: "Pipe & Steel", openClosed: "Open" },
+  { aj: "AJ-015", inspectionNo: "E10372-422", reportingVendor: "Cembell", openClosed: "Open" }
+];
+const existingUnassignedInspection = {
+  id: "inspection-nde-review", tripId: "trip-pipe-steel", activeJobId: "", date: "2026-08-15",
+  reportingVendor: "Pipe & Steel", sbInspectionNo: "E10367-408", activity: "NDE Review",
+  summary: "RT film review", notes: "Preserve all inspection data", status: "Completed",
+  photos: [{ id: "photo-existing" }], loads: [{ id: "load-existing", identifier: "Vendor load" }]
+};
+const inspectionBeforeRecovery = structuredClone(existingUnassignedInspection);
+const damagedCatalogState = {
+  activeJobs: recoverySeed.map((job) => ({ ...job, openClosed: "", source: "active-jobs-import" })),
+  settings: { inspections: [existingUnassignedInspection] },
+  trips: [{ id: "trip-pipe-steel", projectNumber: "E10367-408", vendor: "Pipe & Steel", miles: 0 }],
+  facilityProfiles: [],
+  activeJobImports: []
+};
+const aj014Reference = damagedCatalogState.activeJobs.find((job) => job.aj === "AJ-014");
+const recovery = management.repairBlankOpenClosedFromSeed(damagedCatalogState, recoverySeed);
+assert.deepEqual(recovery.repairedAJs, ["AJ-014", "AJ-015"], "Only seed jobs with a known prior status should be repaired");
+assert.strictEqual(recovery.state.activeJobs.find((job) => job.aj === "AJ-014"), aj014Reference, "AJ-014 must be repaired in place");
+assert.equal(recovery.state.activeJobs.filter((job) => job.aj === "AJ-014").length, 1, "AJ-014 must not be duplicated or recreated");
+assert.equal(recovery.state.activeJobs.find((job) => job.aj === "AJ-014").openClosed, "Open");
+assert.equal(recovery.state.activeJobs.find((job) => job.aj === "AJ-015").openClosed, "Open");
+assert.ok(recovery.state.activeJobs.find((job) => job.aj === "AJ-014").modifiedISO, "A repaired AJ must be marked modified for normal synchronization");
+assert.equal(recovery.state.activeJobs.find((job) => job.aj === "AJ-012").openClosed, "", "AJ-012 has no known seed status and must remain blank");
+assert.equal(recovery.state.activeJobs.find((job) => job.aj === "AJ-013").openClosed, "", "AJ-013 has no known seed status and must remain blank");
+assert.deepEqual(recovery.state.settings.inspections[0], inspectionBeforeRecovery, "Catalog repair must not rewrite the existing unassigned NDE Review inspection");
+assert.equal(recovery.state.settings.inspections[0].activeJobId, "", "The existing inspection must remain unassigned for the user-test assignment workflow");
+const recoveredMatches = management.matchingJobsForVisit(recovery.state, { id: "trip-pipe-steel", projectNumber: "E10367-408", vendor: "Pipe & Steel" });
+assert.equal(recoveredMatches[0]?.aj, "AJ-014", "The repaired Pipe & Steel visit must match AJ-014 again");
+assert.deepEqual(management.matchingJobsForVisit(recovery.state, { id: "trip-unmatched", projectNumber: "E-NOT-REAL", vendor: "Unrelated Vendor" }), [], "An unmatched visit must not fall back to unrelated open jobs");
+const secondRecovery = management.repairBlankOpenClosedFromSeed(recovery.state, recoverySeed);
+assert.deepEqual(secondRecovery.repairedAJs, [], "The recovery must be idempotent after the blank values are restored");
+const explicitlyClosedState = { activeJobs: [{ ...recoverySeed[2], openClosed: "Closed" }] };
+assert.deepEqual(management.repairBlankOpenClosedFromSeed(explicitlyClosedState, recoverySeed).repairedAJs, [], "An explicit Closed value must never be overwritten by seed recovery");
+assert.equal(explicitlyClosedState.activeJobs[0].openClosed, "Closed");
+const changedIdentityState = { activeJobs: [{ ...recoverySeed[2], inspectionNo: "E-DIFFERENT", openClosed: "" }] };
+assert.deepEqual(management.repairBlankOpenClosedFromSeed(changedIdentityState, recoverySeed).repairedAJs, [], "Seed recovery must not cross a changed permanent identity");
+assert.equal(changedIdentityState.activeJobs[0].openClosed, "");
 
 const applied = management.applyImportReview(seededAgain, review, {
   sourceFilename: "Active Jobs Master.xlsx", sourceHash: "abc", deviceId: "device-1", deviceLabel: "PC", importedISO: "2026-08-15T12:00:00.000Z"
