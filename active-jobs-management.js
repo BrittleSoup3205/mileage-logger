@@ -260,13 +260,14 @@
       const warnings = [];
       if (existing) {
         [
-          ["inspectionNo", "S&B Inspection Number"],
-          ["reportingVendor", "Reporting Vendor / Fabricator"]
-        ].forEach(([field, label]) => {
+          ["inspectionNo", "S&B Inspection Number", true],
+          ["reportingVendor", "Reporting Vendor / Fabricator", true],
+          ["openClosed", "Open / Closed value", false]
+        ].forEach(([field, label, warnWhenUnavailable]) => {
           if (!trimmed(sourceJob[field]) && trimmed(existing[field])) {
             job[field] = existing[field];
             warnings.push(`Source blank — existing ${label} preserved.`);
-          } else if (!trimmed(sourceJob[field]) && !trimmed(existing[field])) {
+          } else if (warnWhenUnavailable && !trimmed(sourceJob[field]) && !trimmed(existing[field])) {
             warnings.push(`Source blank — no stored ${label} is available for this existing AJ.`);
           }
         });
@@ -334,6 +335,27 @@
     return JSON.parse(JSON.stringify(job || {}));
   }
 
+  function repairBlankOpenClosedFromSeed(stateInput, seedJobs = root.MileageActiveJobsData?.activeJobs || []) {
+    const state = stateInput && typeof stateInput === "object" ? stateInput : {};
+    if (!Array.isArray(state.activeJobs) || !Array.isArray(seedJobs)) return { state, repairedAJs: [] };
+    const seedByAj = new Map(seedJobs.map((job) => [trimmed(job?.aj), job]));
+    const repairedAJs = [];
+    let repairedISO = "";
+    state.activeJobs.forEach((job) => {
+      if (!job || trimmed(job.openClosed)) return;
+      const seed = seedByAj.get(trimmed(job.aj));
+      if (!seed || !trimmed(seed.openClosed)) return;
+      const currentIdentity = identityKey(job);
+      const seedIdentity = identityKey(seed);
+      if (currentIdentity && seedIdentity && currentIdentity !== seedIdentity) return;
+      repairedISO = repairedISO || nowISO();
+      job.openClosed = seed.openClosed;
+      job.modifiedISO = repairedISO;
+      repairedAJs.push(trimmed(job.aj));
+    });
+    return { state, repairedAJs };
+  }
+
   function migrateState(input, seedJobs = root.MileageActiveJobsData?.activeJobs || []) {
     const state = input && typeof input === "object" ? input : {};
     const hasCatalog = Array.isArray(state.activeJobs);
@@ -341,6 +363,7 @@
       state.activeJobs = (Array.isArray(seedJobs) ? seedJobs : []).map((job) => ({ ...cloneJob(job), source: "embedded-seed" }));
       state.activeJobsInitializedISO = state.activeJobsInitializedISO || nowISO();
     }
+    repairBlankOpenClosedFromSeed(state, seedJobs);
     state.facilityProfiles = Array.isArray(state.facilityProfiles) ? state.facilityProfiles : [];
     state.activeJobImports = Array.isArray(state.activeJobImports) ? state.activeJobImports : [];
     return state;
@@ -528,6 +551,21 @@
     }
     root.localStorage?.setItem(STATE_KEY, JSON.stringify(state));
     root.dispatchEvent?.(new CustomEvent("mileage:state-changed", { detail: { source: "active-jobs-management" } }));
+  }
+
+  function persistMigrationsAndRepairs() {
+    const raw = root.localStorage?.getItem(STATE_KEY);
+    if (raw === null || raw === undefined) return false;
+    try {
+      const original = JSON.parse(raw || "{}");
+      const before = JSON.stringify(original);
+      const migrated = migrateState(original);
+      if (before === JSON.stringify(migrated)) return false;
+      writeState(migrated, { backupChange: false });
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   let pendingReview = null;
@@ -874,22 +912,22 @@
 
     root.addEventListener?.("mileage:state-changed", (event) => {
       if (event.detail?.source === "active-jobs-management") return;
-      renderManagement();
-      renderStartProfileOptions();
+      const refresh = () => {
+        persistMigrationsAndRepairs();
+        renderManagement();
+        renderStartProfileOptions();
+      };
+      if (event.detail?.source === "cloud-sync" && root.setTimeout) root.setTimeout(refresh, 50);
+      else refresh();
     });
   }
 
   function initialize() {
     if (!root.document || !root.localStorage) return;
-    const raw = root.localStorage.getItem(STATE_KEY);
     // An authenticated empty device must remain truly empty until the sync
     // engine performs its pull-only cloud bootstrap. Persist migrations only
     // when this device already has Mileage Logger state.
-    if (raw !== null) {
-      const original = JSON.parse(raw || "{}");
-      const migrated = migrateState(original);
-      if (JSON.stringify(original) !== JSON.stringify(migrated)) writeState(migrated, { backupChange: false });
-    }
+    persistMigrationsAndRepairs();
     ensureManagementCard();
     ensureStartSelectors();
     bindUI();
@@ -903,6 +941,7 @@
     parseActiveJobsWorkbookBytes,
     buildImportReview,
     applyImportReview,
+    repairBlankOpenClosedFromSeed,
     migrateState,
     getActiveJobs,
     getFacilityProfiles,

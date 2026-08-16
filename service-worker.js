@@ -1,4 +1,4 @@
-const CACHE_NAME = "mileage-logger-active-jobs-bootstrap-v59";
+const CACHE_NAME = "mileage-logger-active-jobs-open-status-v60";
 const APP_FILES = [
   "./",
   "./index.html?v=workflow-upgrades-2",
@@ -11,7 +11,7 @@ const APP_FILES = [
   "./sync-engine.js?v=active-jobs-bootstrap-3",
   "./media-store.js?v=visit-workspace-5",
   "./active-jobs-data.js?v=visit-workspace-5",
-  "./active-jobs-management.js?v=upgrade-6-1",
+  "./active-jobs-management.js?v=active-jobs-open-status-hotfix-1",
   "./vendor/pdf-lib.min.js",
   "./vendor/fflate.min.js",
   "./manifest.webmanifest",

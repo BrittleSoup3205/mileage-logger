@@ -12,7 +12,9 @@ On first run, `activeJobs-data.js` seeds `activeJobs` only when that array does 
 
 Settings → **Update Active Jobs** accepts an `.xlsx` file with a worksheet named exactly `Active Jobs`. The reader finds the actual header row, preserves source text, ignores formula-only table rows, and treats Excel error values as unknown/blank.
 
-The review classifies every applicable row as NEW, UPDATED, CLOSED, NO CHANGE, or CONFLICT. Nothing changes until **Apply Update**. When an existing AJ's source row leaves S&B Inspection Number or Reporting Vendor blank, the stored permanent identifier is preserved and shown as a non-blocking warning; blank source cells never erase it. Known historical duplicate identities remain separate with a grandfathered warning. New missing identities, newly introduced duplicates, and nonblank identity changes remain blocking conflicts requiring an explicit decision. Rows missing from a later workbook never close or delete an existing job.
+The review classifies every applicable row as NEW, UPDATED, CLOSED, NO CHANGE, or CONFLICT. Nothing changes until **Apply Update**. When an existing AJ's source row leaves S&B Inspection Number, Reporting Vendor, or Open / Closed blank, the stored value is preserved and shown as a non-blocking warning; blank source cells never erase it. Known historical duplicate identities remain separate with a grandfathered warning. New missing identities, newly introduced duplicates, and nonblank identity changes remain blocking conflicts requiring an explicit decision. Rows missing from a later workbook never close or delete an existing job.
+
+The Open / Closed hotfix also repairs existing synchronized jobs in place when the original import bug left that field blank and the embedded seed has a known nonblank prior value. The repair changes only `openClosed` and `modifiedISO`, allowing ordinary multi-device synchronization to distribute it. It does not recreate jobs or touch trips, inspections, photos, loads, follow-ups, or Facility Profiles. Seed rows whose Open / Closed value is also blank remain blank.
 
 Future workbook imports use this same in-app action and do not require a deployment.
 

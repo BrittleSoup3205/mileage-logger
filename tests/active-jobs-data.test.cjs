@@ -65,7 +65,7 @@ assert.equal((csv.match(/42\.5/g) || []).length, 1, "Shared mileage must appear 
 
 const indexHtml = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
 assert.match(indexHtml, /active-jobs-data\.js\?v=visit-workspace-5/);
-assert.match(indexHtml, /active-jobs-management\.js\?v=upgrade-6-1/);
+assert.match(indexHtml, /active-jobs-management\.js\?v=active-jobs-open-status-hotfix-1/);
 const serviceWorker = fs.readFileSync(path.join(__dirname, "..", "service-worker.js"), "utf8");
 for (const match of serviceWorker.matchAll(/"\.\/([^"?]+)(?:\?[^"\s]+)?"/g)) {
   const asset = match[1];
