@@ -11,6 +11,7 @@
   const INSPECTION_REPORT_TEMPLATE_KEY = "inspectionReportTemplate";
   const WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
   const REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships";
+  const CONTENT_TYPES_NS = "http://schemas.openxmlformats.org/package/2006/content-types";
   const XML_NS = "http://www.w3.org/XML/1998/namespace";
   const nativeSetItem = window.localStorage.setItem.bind(window.localStorage);
   const $ = (id) => document.getElementById(id);
@@ -24,6 +25,8 @@
   let linkedTripPhotoObjectUrls = [];
   let workspacePhotoObjectUrls = [];
   let inspectionListObjectUrls = [];
+  let inspectionPreviewObjectUrls = [];
+  let previewInspectionId = "";
   let activeView = "inspections";
   const selectedInspectionIds = new Set();
   let lastStateSignature = "";
@@ -607,6 +610,28 @@
       .inspection-workflow-panel { margin: 14px 0; padding: 13px; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--accent), transparent 97%); }
       .inspection-check-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
       .inspection-report-preview { margin: 12px 0; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+      .inspection-preview-overlay { position: fixed; inset: 0; z-index: 1000; display: grid; align-items: start; justify-items: center; overflow-y: auto; padding: 24px; background: rgba(5, 12, 24, .72); }
+      .inspection-preview-overlay.hidden { display: none; }
+      .inspection-preview-dialog { width: min(980px, 100%); margin: 0 auto; border: 1px solid var(--line); border-radius: 16px; background: var(--card); box-shadow: 0 24px 70px rgba(0,0,0,.3); }
+      .inspection-preview-header, .inspection-preview-actions { position: sticky; z-index: 2; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 18px; background: var(--card); }
+      .inspection-preview-header { top: 0; border-bottom: 1px solid var(--line); border-radius: 16px 16px 0 0; }
+      .inspection-preview-header h2 { margin: 2px 0 4px; }
+      .inspection-preview-body { display: grid; gap: 16px; padding: 18px; }
+      .inspection-preview-section { padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--card), var(--bg) 25%); }
+      .inspection-preview-section h3 { margin: 0 0 10px; }
+      .inspection-preview-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+      .inspection-preview-fact { min-width: 0; }
+      .inspection-preview-fact small { display: block; color: var(--muted); font-weight: 700; }
+      .inspection-preview-fact span, .inspection-preview-text { display: block; margin-top: 3px; overflow-wrap: anywhere; white-space: pre-wrap; }
+      .inspection-preview-list { display: grid; gap: 9px; }
+      .inspection-preview-item { padding: 10px; border-left: 4px solid var(--info); border-radius: 8px; background: var(--card); }
+      .inspection-preview-item p { margin: 5px 0 0; white-space: pre-wrap; }
+      .inspection-preview-photos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+      .inspection-preview-photo { margin: 0; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+      .inspection-preview-photo img { display: block; width: 100%; max-height: 460px; object-fit: contain; border-radius: 8px; background: color-mix(in srgb, var(--card), var(--bg) 35%); }
+      .inspection-preview-photo figcaption { margin-top: 8px; overflow-wrap: anywhere; }
+      .inspection-preview-photo small { display: block; margin-top: 3px; color: var(--muted); }
+      .inspection-preview-actions { bottom: 0; flex-wrap: wrap; justify-content: flex-end; border-top: 1px solid var(--line); border-radius: 0 0 16px 16px; }
       .inspection-autosave-status { color: var(--muted); font-size: .86rem; }
       .inspection-empty { padding: 18px; color: var(--muted); text-align: center; border: 1px dashed var(--line); border-radius: 12px; }
       .inspection-pill-open { color: var(--warning); background: color-mix(in srgb, var(--warning), transparent 88%); }
@@ -622,6 +647,11 @@
         .inspection-photo-card { grid-template-columns: 1fr; }
         .inspection-photo-preview { min-height: 180px; }
         .inspection-record-heading, .inspection-backup-notice, .inspection-template-heading { flex-direction: column; }
+        .inspection-preview-overlay { padding: 0; }
+        .inspection-preview-dialog { min-height: 100%; border: 0; border-radius: 0; }
+        .inspection-preview-header { border-radius: 0; }
+        .inspection-preview-facts, .inspection-preview-photos { grid-template-columns: 1fr; }
+        .inspection-preview-actions { border-radius: 0; }
       }
     `;
     document.head.appendChild(style);
@@ -767,6 +797,17 @@
       if (settingsSection) settingsSection.insertAdjacentElement("beforebegin", section);
       else if (main) main.appendChild(section);
       else document.body.appendChild(section);
+    }
+
+    if (!$("inspectionPreviewOverlay")) {
+      const preview = document.createElement("div");
+      preview.id = "inspectionPreviewOverlay";
+      preview.className = "inspection-preview-overlay hidden";
+      preview.setAttribute("role", "dialog");
+      preview.setAttribute("aria-modal", "true");
+      preview.setAttribute("aria-labelledby", "inspectionPreviewTitle");
+      preview.innerHTML = `<article class="inspection-preview-dialog"><div id="inspectionPreviewContent"></div></article>`;
+      document.body.appendChild(preview);
     }
 
     const helpCard = document.querySelector(".help-card");
@@ -2109,6 +2150,179 @@
     if (clearButton) clearButton.disabled = selectedInspectionIds.size === 0;
   }
 
+  function inspectionSpecificPhotoReferences(inspection) {
+    const seenIds = new Set();
+    return (Array.isArray(inspection?.photos) ? inspection.photos : [])
+      .filter((photo) => photo && !photo.sourceTripId)
+      .filter((photo) => {
+        const id = String(photo.id || "").trim();
+        if (!id) return true;
+        if (seenIds.has(id)) return false;
+        seenIds.add(id);
+        return true;
+      })
+      .map((photo) => ({ ...photo }));
+  }
+
+  function photoFigureCaption(photo, figureNumber) {
+    const name = String(photo?.name || "").trim();
+    const caption = String(photo?.caption || "").trim();
+    const detail = caption && name && caption.toLowerCase() !== name.toLowerCase()
+      ? `${caption} (${name})`
+      : caption || name || "Inspection photo";
+    return `Figure ${figureNumber} - ${detail}`;
+  }
+
+  function buildInspectionPreviewModel(state, inspection) {
+    const activeJob = activeJobsForState(state).find((job) => job.aj === inspection.activeJobId) || null;
+    const trip = getTripById(state, inspection.tripId);
+    const snapshot = inspection.tripSnapshot || (trip ? tripSnapshot(trip) : null);
+    const photos = inspectionSpecificPhotoReferences(inspection);
+    const photoNames = new Map(photos.map((photo) => [photo.id, photo.caption || photo.name || photo.id]));
+    return {
+      id: inspection.id,
+      title: [inspection.activeJobId, inspection.inspectionLocation || inspection.vendor, displayDate(inspection.date)].filter(Boolean).join(" | "),
+      facts: [
+        ["Active Job / AJ number", inspection.activeJobId || "Unassigned"],
+        ["S&B inspection number", inspection.sbInspectionNo || inspection.projectNumber || activeJob?.inspectionNo || ""],
+        ["Client / project", [inspection.customer || activeJob?.workbookClient, inspection.projectName || activeJob?.projectName].filter(Boolean).join(" / ")],
+        ["Reporting vendor", inspection.reportingVendor || activeJob?.reportingVendor || inspection.vendor || ""],
+        ["Inspection location / subvendor", inspection.inspectionLocation || inspection.vendor || activeJob?.location || ""],
+        ["Vendor job number", inspection.vendorJobNumber || activeJob?.vendorJobs || ""],
+        ["Equipment", inspection.equipmentTag || ""],
+        ["ISO drawing", inspection.isoDrawingNumber || ""],
+        ["Piece / spool", inspection.pieceSpoolNumber || ""],
+        ["Date", displayDate(inspection.date)],
+        ["Inspection type", inspection.inspectionType || "Inspection"],
+        ["Activity", inspection.activity || ""],
+        ["Status", inspection.status || "Draft"],
+        ["Acceptance / release", inspection.acceptanceStatus || "Not Determined"]
+      ],
+      visitFacts: snapshot ? [
+        ["Visit", snapshot.inProgress ? "Trip in progress" : "Linked mileage trip"],
+        ["Trip date", displayDate(snapshot.date || inspection.date)],
+        ["Time", [snapshot.startTime, snapshot.endTime].filter(Boolean).join(" - ")],
+        ["Mileage", formatMiles(snapshot.miles)],
+        ["GPS route miles", snapshot.gpsRouteMiles ? formatMiles(snapshot.gpsRouteMiles) : ""],
+        ["Destination / vendor", trip?.vendor || inspection.vendor || ""],
+        ["Purpose", trip?.purpose || inspection.activity || ""]
+      ] : [["Visit / mileage", "Standalone inspection"]],
+      narratives: [
+        ["Summary", inspection.summary || ""],
+        ["Quick note", inspection.quickNote || ""],
+        ["Generated report language", inspection.generatedReportLanguage || ""],
+        ["Observations", inspection.observations || ""],
+        ["Deficiency status", inspection.deficiencyStatus || (inspection.deficiencies ? "Issue noted" : "")],
+        ["Deficiency details", inspection.deficiencies || ""]
+      ],
+      workflowFindings: [
+        ["Coating system", inspection.coating?.system],
+        ["Coating manufacturer / product", inspection.coating?.manufacturer],
+        ["Environmental conditions", inspection.coating?.environment],
+        ["Blast / surface preparation", inspection.coating?.blast],
+        ["Anchor profile", inspection.coating?.profile],
+        ["Anchor-profile readings", inspection.coating?.profileReadings],
+        ["Products verified", inspection.coating?.products],
+        ["DFT", inspection.coating?.dft],
+        ["DFT readings", inspection.coating?.dftReadings],
+        ["Coating appearance", inspection.coating?.appearance],
+        ["Vendor QC", inspection.coating?.vendorQc],
+        ["Structural materials / identification", inspection.structural?.material],
+        ["Structural weld visual condition", inspection.structural?.welds],
+        ["Structural workmanship", inspection.structural?.workmanship],
+        ["Structural dimensions", inspection.structural?.dimensions],
+        ["Post-galvanizing condition", inspection.structural?.galvanizing]
+      ].filter(([, value]) => String(value || "").trim()),
+      loads: inspectionLoads(inspection).map((load) => ({
+        identifier: load.identifier || "Unidentified load",
+        status: load.status || "Not Recorded",
+        notes: load.notes || "",
+        deficiencyFollowUp: load.deficiencyFollowUp || "",
+        photos: (load.photoIds || []).map((id) => photoNames.get(id) || id)
+      })),
+      followUps: (inspection.followUps || []).map((item) => ({
+        action: item.action || "Follow-up",
+        responsibleParty: item.responsibleParty || "",
+        dueDate: item.dueDate ? displayDate(item.dueDate) : "",
+        status: item.status || "Open"
+      })),
+      photos
+    };
+  }
+
+  function previewFactsMarkup(facts) {
+    return facts.filter(([, value]) => String(value || "").trim()).map(([label, value]) => `
+      <div class="inspection-preview-fact"><small>${escapeHTML(label)}</small><span>${escapeHTML(value)}</span></div>
+    `).join("");
+  }
+
+  function inspectionPreviewMarkup(model) {
+    const narratives = model.narratives.filter(([, value]) => String(value || "").trim());
+    return `
+      <header class="inspection-preview-header">
+        <div><p class="eyebrow">Read-only inspection preview</p><h2 id="inspectionPreviewTitle">${escapeHTML(model.title || "Inspection")}</h2><p class="muted">Review this record before editing or sending it to Inspection Notes.</p></div>
+        <button class="button button-quiet button-small" type="button" data-close-inspection-preview>Close</button>
+      </header>
+      <div class="inspection-preview-body">
+        <section class="inspection-preview-section"><h3>Inspection identity</h3><div class="inspection-preview-facts">${previewFactsMarkup(model.facts)}</div></section>
+        <section class="inspection-preview-section"><h3>Visit / mileage context</h3><div class="inspection-preview-facts">${previewFactsMarkup(model.visitFacts)}</div></section>
+        ${narratives.length ? `<section class="inspection-preview-section"><h3>Inspection notes and findings</h3><div class="inspection-preview-list">${narratives.map(([label, value]) => `<article class="inspection-preview-item"><strong>${escapeHTML(label)}</strong><p>${escapeHTML(value)}</p></article>`).join("")}</div></section>` : ""}
+        ${model.workflowFindings.length ? `<section class="inspection-preview-section"><h3>Detailed inspection findings</h3><div class="inspection-preview-facts">${previewFactsMarkup(model.workflowFindings)}</div></section>` : ""}
+        ${model.loads.length ? `<section class="inspection-preview-section"><h3>Vendor loads</h3><div class="inspection-preview-list">${model.loads.map((load) => `<article class="inspection-preview-item"><strong>${escapeHTML(load.identifier)} • ${escapeHTML(load.status)}</strong>${load.notes ? `<p>${escapeHTML(load.notes)}</p>` : ""}${load.deficiencyFollowUp ? `<p><strong>Deficiency / follow-up:</strong> ${escapeHTML(load.deficiencyFollowUp)}</p>` : ""}${load.photos.length ? `<p><strong>Photos:</strong> ${escapeHTML(load.photos.join(" | "))}</p>` : ""}</article>`).join("")}</div></section>` : ""}
+        ${model.followUps.length ? `<section class="inspection-preview-section"><h3>Follow-ups</h3><div class="inspection-preview-list">${model.followUps.map((item) => `<article class="inspection-preview-item"><strong>${escapeHTML(item.action)} • ${escapeHTML(item.status)}</strong>${item.responsibleParty || item.dueDate ? `<p>${escapeHTML([item.responsibleParty, item.dueDate].filter(Boolean).join(" • "))}</p>` : ""}</article>`).join("")}</div></section>` : ""}
+        <section class="inspection-preview-section"><h3>Inspection photos (${model.photos.length})</h3>${model.photos.length ? `<div class="inspection-preview-photos">${model.photos.map((photo, index) => `<figure class="inspection-preview-photo"><div class="inspection-photo-loading" data-preview-photo="${escapeHTML(photo.id || "")}">Loading photo…</div><figcaption>${escapeHTML(photoFigureCaption(photo, index + 1))}</figcaption>${photo.name ? `<small>Filename: ${escapeHTML(photo.name)}</small>` : ""}</figure>`).join("")}</div>` : `<p class="muted">No inspection-specific photos are attached.</p>`}</section>
+      </div>
+      <footer class="inspection-preview-actions">
+        <button class="button button-secondary" type="button" data-preview-edit-inspection="${escapeHTML(model.id)}">Edit Inspection</button>
+        <button class="button inspection-button" type="button" data-preview-export-inspection="${escapeHTML(model.id)}">Generate / Send to Inspection Notes</button>
+        <button class="button button-quiet" type="button" data-close-inspection-preview>Close Preview</button>
+      </footer>
+    `;
+  }
+
+  async function hydrateInspectionPreviewPhotos(model) {
+    inspectionPreviewObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+    inspectionPreviewObjectUrls = [];
+    if (!window.MileageMediaStore || !model.photos.length) return;
+    const stored = await window.MileageMediaStore.getAllPhotos();
+    const byId = new Map(stored.map((photo) => [photo.id, photo]));
+    document.querySelectorAll("#inspectionPreviewContent [data-preview-photo]").forEach((holder) => {
+      const photo = byId.get(holder.dataset.previewPhoto);
+      if (!photo?.blob) {
+        holder.textContent = "Photo file is not available on this device.";
+        return;
+      }
+      const url = URL.createObjectURL(photo.blob);
+      inspectionPreviewObjectUrls.push(url);
+      const image = document.createElement("img");
+      image.src = url;
+      image.alt = photo.caption || photo.name || "Inspection photo";
+      holder.replaceWith(image);
+    });
+  }
+
+  function closeInspectionPreview() {
+    inspectionPreviewObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+    inspectionPreviewObjectUrls = [];
+    previewInspectionId = "";
+    $("inspectionPreviewOverlay")?.classList.add("hidden");
+  }
+
+  async function openInspectionPreview(inspectionId) {
+    const state = readState();
+    const inspection = state.settings.inspections.find((item) => item.id === inspectionId);
+    const overlay = $("inspectionPreviewOverlay");
+    const content = $("inspectionPreviewContent");
+    if (!inspection || !overlay || !content) return;
+    const model = buildInspectionPreviewModel(state, inspection);
+    previewInspectionId = inspection.id;
+    content.innerHTML = inspectionPreviewMarkup(model);
+    overlay.classList.remove("hidden");
+    overlay.scrollTop = 0;
+    content.querySelector("[data-close-inspection-preview]")?.focus();
+    await hydrateInspectionPreviewPhotos(model);
+  }
+
   function renderInspectionList(state) {
     const container = $("inspectionList");
     if (!container) return;
@@ -2194,6 +2408,7 @@
           `).join("")}</div>` : ""}
 
           <div class="inspection-record-actions">
+            <button class="button button-secondary button-small" type="button" data-preview-inspection="${escapeHTML(inspection.id)}">Preview</button>
             <button class="button button-secondary button-small" type="button" data-edit-inspection="${escapeHTML(inspection.id)}">Edit</button>
             <button class="button button-secondary button-small" type="button" data-duplicate-inspection="${escapeHTML(inspection.id)}">Duplicate</button>
             <button class="button inspection-button button-small" type="button" data-export-inspection="${escapeHTML(inspection.id)}">Send to Inspection Notes</button>
@@ -2717,6 +2932,26 @@
     );
   }
 
+  function ensurePhotoTableRows(table, requiredRows) {
+    const rows = tableRows(table);
+    if (!rows.length) throw new Error("The S&B template photo table has no rows.");
+    while (tableRows(table).length < requiredRows) {
+      table.appendChild(rows[rows.length - 1].cloneNode(true));
+    }
+    tableRows(table).forEach((row) => {
+      let properties = Array.from(row.childNodes).find(
+        (node) => node.nodeType === 1 && node.namespaceURI === WORD_NS && node.localName === "trPr"
+      );
+      if (!properties) {
+        properties = row.ownerDocument.createElementNS(WORD_NS, "w:trPr");
+        row.insertBefore(properties, row.firstChild);
+      }
+      if (!wordElements(properties, "cantSplit").length) {
+        properties.appendChild(row.ownerDocument.createElementNS(WORD_NS, "w:cantSplit"));
+      }
+    });
+  }
+
   function setWordCellText(table, rowIndex, cellIndex, value) {
     const row = tableRows(table)[rowIndex];
     const cell = row ? rowCells(row)[cellIndex] : null;
@@ -2809,13 +3044,32 @@
     const caption = importWordFragment(
       cell.ownerDocument,
       wordParagraph(
-        `Figure ${figureNumber} - ${photo.caption || photo.name || "Inspection photo"}`,
+        photoFigureCaption(photo, figureNumber),
         "",
         { center: true }
       )
     );
     cell.appendChild(imageParagraph);
     cell.appendChild(caption);
+  }
+
+  function setUnsupportedPhotoCell(table, rowIndex, cellIndex, photo, figureNumber) {
+    const row = tableRows(table)[rowIndex];
+    const cell = row ? rowCells(row)[cellIndex] : null;
+    if (!cell) return;
+    Array.from(cell.childNodes).forEach((node) => {
+      if (!(node.nodeType === 1 && node.namespaceURI === WORD_NS && node.localName === "tcPr")) {
+        cell.removeChild(node);
+      }
+    });
+    cell.appendChild(importWordFragment(
+      cell.ownerDocument,
+      wordParagraph("Image retained in the handoff Photos folder; this format cannot be embedded in Word.", "", { center: true })
+    ));
+    cell.appendChild(importWordFragment(
+      cell.ownerDocument,
+      wordParagraph(photoFigureCaption(photo, figureNumber), "", { center: true })
+    ));
   }
 
   function setEmptyPhotoCell(table, rowIndex, cellIndex, figureNumber) {
@@ -2835,12 +3089,35 @@
     );
   }
 
+  function clearPhotoCell(table, rowIndex, cellIndex) {
+    const row = tableRows(table)[rowIndex];
+    const cell = row ? rowCells(row)[cellIndex] : null;
+    if (!cell) return;
+    Array.from(cell.childNodes).forEach((node) => {
+      if (!(node.nodeType === 1 && node.namespaceURI === WORD_NS && node.localName === "tcPr")) {
+        cell.removeChild(node);
+      }
+    });
+    cell.appendChild(importWordFragment(cell.ownerDocument, wordParagraph(" ")));
+  }
+
   function nextRelationshipId(relationshipsDocument) {
     const used = Array.from(relationshipsDocument.getElementsByTagNameNS(REL_NS, "Relationship"))
       .map((relationship) => String(relationship.getAttribute("Id") || ""))
       .map((id) => Number(id.replace(/^rId/i, "")))
       .filter(Number.isFinite);
     return Math.max(0, ...used) + 1;
+  }
+
+  function ensureWordImageContentType(contentTypesDocument, extension) {
+    const normalized = extension === "jpeg" ? "jpg" : extension;
+    const existing = Array.from(contentTypesDocument.getElementsByTagNameNS(CONTENT_TYPES_NS, "Default"))
+      .some((item) => String(item.getAttribute("Extension") || "").toLowerCase() === normalized);
+    if (existing) return;
+    const entry = contentTypesDocument.createElementNS(CONTENT_TYPES_NS, "Default");
+    entry.setAttribute("Extension", normalized);
+    entry.setAttribute("ContentType", normalized === "png" ? "image/png" : "image/jpeg");
+    contentTypesDocument.documentElement.appendChild(entry);
   }
 
   async function buildSAndBInspectionDocx(templateRecord, inspection, photos, outputFilename) {
@@ -2855,6 +3132,7 @@
       files["word/_rels/document.xml.rels"],
       "word/_rels/document.xml.rels"
     );
+    const contentTypesXml = parseWordXml(files["[Content_Types].xml"], "[Content_Types].xml");
 
     const headerTable = wordElements(headerXml, "tbl")[0];
     const activeJob = activeJobById(inspection.activeJobId);
@@ -2917,12 +3195,16 @@
 
     const relationshipRoot = relationshipsXml.documentElement;
     let relationshipNumber = nextRelationshipId(relationshipsXml);
-    const supportedPhotos = photos
-      .filter((photo) => ["png", "jpg", "jpeg"].includes(photoExtension(photo)))
-      .slice(0, 4);
-    for (let index = 0; index < supportedPhotos.length; index += 1) {
-      const photo = supportedPhotos[index];
+    const requiredPhotoRows = Math.max(2, Math.ceil(photos.length / 2));
+    ensurePhotoTableRows(photoTable, requiredPhotoRows);
+    for (let index = 0; index < photos.length; index += 1) {
+      const photo = photos[index];
+      if (!["png", "jpg", "jpeg"].includes(photoExtension(photo))) {
+        setUnsupportedPhotoCell(photoTable, Math.floor(index / 2), index % 2, photo, index + 1);
+        continue;
+      }
       const extension = photoExtension(photo) === "jpeg" ? "jpg" : photoExtension(photo);
+      ensureWordImageContentType(contentTypesXml, extension);
       const mediaName = `sb-inspection-photo-${index + 1}.${extension}`;
       const relationshipId = `rId${relationshipNumber}`;
       relationshipNumber += 1;
@@ -2946,13 +3228,12 @@
         index + 1
       );
     }
-    for (let index = supportedPhotos.length; index < 4; index += 1) {
-      setEmptyPhotoCell(
-        photoTable,
-        Math.floor(index / 2),
-        index % 2,
-        index + 1
-      );
+    for (let index = photos.length; index < requiredPhotoRows * 2; index += 1) {
+      if (index < 4) {
+        setEmptyPhotoCell(photoTable, Math.floor(index / 2), index % 2, index + 1);
+      } else {
+        clearPhotoCell(photoTable, Math.floor(index / 2), index % 2);
+      }
     }
 
     wordElements(footerXml, "t").forEach((textNode) => {
@@ -2964,6 +3245,7 @@
     files["word/header1.xml"] = serializeWordXml(headerXml);
     files["word/footer1.xml"] = serializeWordXml(footerXml);
     files["word/_rels/document.xml.rels"] = serializeWordXml(relationshipsXml);
+    files["[Content_Types].xml"] = serializeWordXml(contentTypesXml);
     return new Uint8Array(window.fflate.zipSync(files, { level: 6 }));
   }
 
@@ -3012,13 +3294,12 @@
     const photoBody = photos.length
       ? photos.map((photo, index) => {
         const embedded = imageRelationships.find((item) => item.photo === photo);
-        const caption = photo.caption || photo.name || `Inspection photo ${index + 1}`;
         const photoHeading = index === 0
           ? `Inspection Photos - Photo 1 of ${photos.length}`
           : `Photo ${index + 1} of ${photos.length}`;
         return [
           wordParagraph(photoHeading, "Heading1", { pageBreakBefore: true, keepNext: true }),
-          wordParagraph(caption, "Caption", { center: true }),
+          wordParagraph(photoFigureCaption(photo, index + 1), "Caption", { center: true }),
           embedded
             ? wordImageParagraph(photo, embedded.relationshipId, index + 1, embedded.mediaName)
             : wordParagraph("This image remains in the package's Photos folder but cannot be embedded in this Word version.", "", { center: true }),
@@ -3294,7 +3575,7 @@
     // Match by the photo's unique ID so packages also include photos created by
     // older builds that saved a temporary inspection ID before the record itself.
     const byId = new Map(stored.map((photo) => [photo.id, photo]));
-    return (inspection.photos || []).map((metadata, index) => {
+    return inspectionSpecificPhotoReferences(inspection).map((metadata, index) => {
       const photo = byId.get(metadata.id);
       if (!photo?.blob) return null;
       const extension = photoExtension(photo);
@@ -3785,6 +4066,37 @@
         return;
       }
 
+      if (event.target.closest("[data-close-inspection-preview]")) {
+        closeInspectionPreview();
+        return;
+      }
+
+      const previewButton = event.target.closest("[data-preview-inspection]");
+      if (previewButton) {
+        await openInspectionPreview(previewButton.dataset.previewInspection);
+        return;
+      }
+
+      const previewEditButton = event.target.closest("[data-preview-edit-inspection]");
+      if (previewEditButton) {
+        const state = readState();
+        const inspection = state.settings.inspections.find((item) => item.id === previewEditButton.dataset.previewEditInspection);
+        closeInspectionPreview();
+        if (inspection) {
+          showInspectionSection(false);
+          openInspectionForm(inspection);
+        }
+        return;
+      }
+
+      const previewExportButton = event.target.closest("[data-preview-export-inspection]");
+      if (previewExportButton) {
+        const state = readState();
+        const inspection = state.settings.inspections.find((item) => item.id === previewExportButton.dataset.previewExportInspection);
+        if (inspection) await exportInspectionPackage(inspection, previewExportButton);
+        return;
+      }
+
       const editButton = event.target.closest("[data-edit-inspection]");
       if (editButton) {
         const state = readState();
@@ -3947,6 +4259,10 @@
       saveInspectionFromForm();
     });
 
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && previewInspectionId) closeInspectionPreview();
+    });
+
     window.addEventListener("storage", () => refreshFromState(true));
     window.addEventListener("mileage:trip-finalized", (event) => {
       finalizeLinkedTrip(event.detail?.tripId || "");
@@ -4007,6 +4323,15 @@
 
     window.setInterval(() => refreshFromState(false), REFRESH_INTERVAL_MS);
   }
+
+  window.MileageInspectionReportTesting = Object.freeze({
+    inspectionSpecificPhotoReferences,
+    photoFigureCaption,
+    buildInspectionPreviewModel,
+    inspectionPreviewMarkup,
+    buildInspectionDocx,
+    buildSAndBInspectionDocx
+  });
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initialize, { once: true });
