@@ -128,6 +128,11 @@ assert.equal((markup.match(/data-preview-photo=/g) || []).length, 2, "Preview mu
 assert.match(markup, /data-preview-edit-inspection="inspection-1"/);
 assert.match(markup, /data-preview-export-inspection="inspection-1"/);
 assert.match(markup, /data-close-inspection-preview/);
+assert.match(markup, /LOAD-X • Hold/, "Vendor load status should use the intended bullet separator");
+assert.match(markup, /Verify repair • Open/, "Follow-up status should use the intended bullet separator");
+assert.match(markup, /Vendor • 08\/20\/2026/, "Follow-up details should use the intended bullet separator");
+assert.match(markup, /Loading photo…/, "Photo loading text should use the intended ellipsis");
+assert.doesNotMatch(markup, /(?:\u00e2\u20ac|\u00c3|\ufffd|\u00c2|\u00f0\u0178)/i, "Inspection Preview markup must not contain known mojibake sequences");
 
 assert.match(styles, /\.inspection-preview-photos \{[^}]*grid-template-columns: repeat\(2,/s, "Desktop preview should use a two-column photo layout");
 assert.match(styles, /@media \(max-width: 760px\)[^]*\.inspection-preview-facts, \.inspection-preview-photos \{ grid-template-columns: 1fr;/, "Mobile preview should collapse to one column");
