@@ -120,6 +120,11 @@
     return /^#(?:REF!|VALUE!|N\/A|NAME\?|DIV\/0!|NUM!|NULL!)$/i.test(trimmed(result)) ? "" : result;
   }
 
+  function plausibleStatus(value) {
+    const candidate = trimmed(value);
+    return !candidate || /[a-z]/i.test(candidate);
+  }
+
   function parseSharedStrings(xml) {
     return [...text(xml).matchAll(/<si\b[^>]*>([\s\S]*?)<\/si>/gi)].map((match) => (
       [...match[1].matchAll(/<t\b[^>]*>([\s\S]*?)<\/t>/gi)].map((item) => decodeXml(item[1])).join("")
@@ -197,6 +202,11 @@
         const value = row[column] ?? "";
         record[field] = cleanWorkbookValue(DATE_FIELDS.has(field) ? excelDate(value) : value);
       });
+      record._importWarnings = [];
+      if (!plausibleStatus(record.status)) {
+        record._importWarnings.push(`Current Status value “${trimmed(record.status)}” is numeric or implausible and was left blank.`);
+        record.status = "";
+      }
       // Ignore Excel table/formula rows that contain no source job data.
       // Derived workbook columns may contain formulas below the final job.
       // Rows with any identity or job-detail value are retained so malformed
@@ -257,7 +267,8 @@
       const aj = trimmed(sourceJob.aj);
       const existing = existingByAj.get(aj) || null;
       const job = cloneJob(sourceJob);
-      const warnings = [];
+      const warnings = Array.isArray(sourceJob._importWarnings) ? [...sourceJob._importWarnings] : [];
+      delete job._importWarnings;
       if (existing) {
         [
           ["inspectionNo", "S&B Inspection Number", true],
@@ -356,6 +367,32 @@
     return { state, repairedAJs };
   }
 
+  function calculatedMileageVisit(state, job) {
+    const inspections = Array.isArray(state?.settings?.inspections) ? state.settings.inspections : [];
+    const dates = inspections
+      .filter((inspection) => trimmed(inspection.activeJobId) === trimmed(job.aj))
+      .map((inspection) => inspection.tripSnapshot?.date || (inspection.tripId ? inspection.date : ""))
+      .map(excelDate)
+      .filter(Boolean)
+      .sort();
+    return dates.at(-1) || "";
+  }
+
+  function refreshCalculatedJobFields(state) {
+    if (!Array.isArray(state.activeJobs)) return [];
+    const repaired = [];
+    state.activeJobs.forEach((job) => {
+      if (!plausibleStatus(job.status)) {
+        job.status = "";
+        job.statusRepairNote = "An invalid numeric Current Status was removed. Review the Active Jobs Master row.";
+        repaired.push(job.aj);
+      }
+      const visit = calculatedMileageVisit(state, job);
+      if (visit && visit !== cleanWorkbookValue(job.lastMileageLoggerVisit)) job.lastMileageLoggerVisit = visit;
+    });
+    return repaired;
+  }
+
   function migrateState(input, seedJobs = root.MileageActiveJobsData?.activeJobs || []) {
     const state = input && typeof input === "object" ? input : {};
     const hasCatalog = Array.isArray(state.activeJobs);
@@ -366,6 +403,8 @@
     repairBlankOpenClosedFromSeed(state, seedJobs);
     state.facilityProfiles = Array.isArray(state.facilityProfiles) ? state.facilityProfiles : [];
     state.activeJobImports = Array.isArray(state.activeJobImports) ? state.activeJobImports : [];
+    state.activeJobUpdateProposals = Array.isArray(state.activeJobUpdateProposals) ? state.activeJobUpdateProposals : [];
+    refreshCalculatedJobFields(state);
     return state;
   }
 
@@ -614,6 +653,23 @@
     return getFacilityProfiles(state).map((profile) => `<option value="${escapeHTML(profile.id)}"${selected.has(profile.id) ? " selected" : ""}>${escapeHTML(profile.name || profile.shopFacilityName || profile.reportingVendor || profile.id)}</option>`).join("");
   }
 
+  function activeJobProposalMarkup(state) {
+    const proposals = Array.isArray(state.activeJobUpdateProposals) ? state.activeJobUpdateProposals : [];
+    if (!proposals.length) return `<div class="active-jobs-empty">No completed inspections are waiting for an Active Job review.</div>`;
+    return proposals.map((proposal) => `
+      <article class="active-jobs-review-item" data-active-job-proposal="${escapeHTML(proposal.id)}">
+        <strong>${escapeHTML(proposal.activeJobId)} — review after inspection ${escapeHTML(proposal.inspectionId)}</strong>
+        <div class="inspection-form-grid">
+          <label>Current Status<input data-proposal-status value="${escapeHTML(proposal.currentStatus || "")}" placeholder="Leave blank when unknown"></label>
+          <label>Next Action<input data-proposal-next-action value="${escapeHTML(proposal.nextAction || "")}" placeholder="Required follow-up or next step"></label>
+          <label>Last Inspection Date<input data-proposal-last-inspection type="date" value="${escapeHTML(excelDate(proposal.lastInspectionDate))}"></label>
+          <label>Last Mileage Logger Visit<input data-proposal-last-visit type="date" value="${escapeHTML(excelDate(proposal.lastMileageLoggerVisit))}"></label>
+          <label>Next Expected Inspection<input data-proposal-next-expected type="date" value="${escapeHTML(excelDate(proposal.nextExpectedInspection))}"></label>
+        </div>
+        <div class="form-actions wrap"><button class="button button-primary button-small" type="button" data-apply-active-job-proposal>Apply Reviewed Update</button><button class="button button-quiet button-small" type="button" data-dismiss-active-job-proposal>Dismiss</button></div>
+      </article>`).join("");
+  }
+
   function renderManagement() {
     const host = root.document?.getElementById("activeJobsManagementCard");
     if (!host) return;
@@ -633,6 +689,26 @@
         <input id="activeJobsWorkbookInput" class="hidden" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
       </div>
       <p id="activeJobsImportStatus" class="gps-status">Choose an .xlsx file containing a worksheet named Active Jobs.</p>
+      <details class="active-jobs-management-details" open>
+        <summary>Inspection → Active Job review (${state.activeJobUpdateProposals.length})</summary>
+        <p>Completed inspections propose dates and follow-ups here. Nothing changes in the authoritative Active Job until you review and apply it.</p>
+        <div class="active-jobs-review-list">${activeJobProposalMarkup(state)}</div>
+      </details>
+      <details class="active-jobs-management-details">
+        <summary>Create a genuinely new Active Job</summary>
+        <form id="newActiveJobForm" class="inspection-form-grid" autocomplete="off">
+          <label>Record ID / AJ number<input id="newActiveJobAj" required pattern="AJ-[0-9]{3,}" placeholder="AJ-901"></label>
+          <label>S&B inspection number<input id="newActiveJobInspectionNo" required></label>
+          <label>Client<input id="newActiveJobClient"></label>
+          <label>Project name<input id="newActiveJobProjectName"></label>
+          <label>Reporting vendor<input id="newActiveJobVendor" required></label>
+          <label>Vendor job number<input id="newActiveJobVendorJob"></label>
+          <label>Current Status<input id="newActiveJobStatus" placeholder="Leave blank when unknown"></label>
+          <label>Next Action<input id="newActiveJobNextAction"></label>
+          <button class="button button-primary" type="submit">Create New Active Job</button>
+        </form>
+        <small>The AJ number must come from the authoritative master. Existing numbers are never reused, generated, or renumbered.</small>
+      </details>
       <section class="active-jobs-import-review" aria-live="polite">
         <div class="section-heading compact"><div><p class="eyebrow">Review before apply</p><h3>Import Changes</h3></div></div>
         <div id="activeJobsImportReview">${reviewMarkup(pendingReview)}</div>
@@ -843,6 +919,28 @@
         renderManagement();
       }
       if (event.target.closest("#clearFacilityProfileBtn")) fillProfileForm(null);
+      const proposalCard = event.target.closest("[data-active-job-proposal]");
+      if (proposalCard && event.target.closest("[data-apply-active-job-proposal], [data-dismiss-active-job-proposal]")) {
+        const state = readState();
+        const proposal = state.activeJobUpdateProposals.find((item) => item.id === proposalCard.dataset.activeJobProposal);
+        if (!proposal) return;
+        if (event.target.closest("[data-apply-active-job-proposal]")) {
+          const job = state.activeJobs.find((item) => item.aj === proposal.activeJobId);
+          if (!job) { root.alert("The Active Job is no longer available."); return; }
+          const status = proposalCard.querySelector("[data-proposal-status]")?.value.trim() || "";
+          if (!plausibleStatus(status)) { root.alert("Current Status must contain meaningful text or remain blank."); return; }
+          job.status = status;
+          job.nextAction = proposalCard.querySelector("[data-proposal-next-action]")?.value.trim() || "";
+          job.lastInspectionDate = proposalCard.querySelector("[data-proposal-last-inspection]")?.value || job.lastInspectionDate || "";
+          job.lastMileageLoggerVisit = proposalCard.querySelector("[data-proposal-last-visit]")?.value || job.lastMileageLoggerVisit || "";
+          job.nextExpectedInspection = proposalCard.querySelector("[data-proposal-next-expected]")?.value || "";
+          job.modifiedISO = nowISO();
+        }
+        state.activeJobUpdateProposals = state.activeJobUpdateProposals.filter((item) => item.id !== proposal.id);
+        writeState(state);
+        renderManagement();
+        return;
+      }
     });
 
     root.document.addEventListener("change", async (event) => {
@@ -896,6 +994,35 @@
     });
 
     root.document.addEventListener("submit", (event) => {
+      if (event.target.id === "newActiveJobForm") {
+        event.preventDefault();
+        const value = (id) => root.document.getElementById(id)?.value.trim() || "";
+        const aj = value("newActiveJobAj").toUpperCase();
+        const state = readState();
+        if (!/^AJ-\d{3,}$/.test(aj)) { root.alert("Enter the authoritative AJ number in AJ-### format."); return; }
+        if (state.activeJobs.some((job) => keyText(job.aj) === keyText(aj))) { root.alert(`${aj} already exists and cannot be reused.`); return; }
+        if (!value("newActiveJobInspectionNo") || !value("newActiveJobVendor")) { root.alert("S&B inspection number and reporting vendor are required."); return; }
+        const status = value("newActiveJobStatus");
+        if (!plausibleStatus(status)) { root.alert("Current Status must contain meaningful text or remain blank."); return; }
+        state.activeJobs.push({
+          aj,
+          inspectionNo: value("newActiveJobInspectionNo"),
+          workbookClient: value("newActiveJobClient"),
+          projectName: value("newActiveJobProjectName"),
+          reportingVendor: value("newActiveJobVendor"),
+          vendorJobs: value("newActiveJobVendorJob"),
+          status,
+          nextAction: value("newActiveJobNextAction"),
+          openClosed: "Open",
+          source: "manual-authoritative-entry",
+          createdISO: nowISO(),
+          modifiedISO: nowISO()
+        });
+        writeState(state);
+        renderManagement();
+        renderStartProfileOptions();
+        return;
+      }
       if (event.target.id !== "facilityProfileForm") return;
       event.preventDefault();
       const profile = collectProfileForm();
@@ -952,6 +1079,9 @@
     matchingJobsForVisit,
     prefillVisitRecord,
     assignPendingInspectionRecord,
+    plausibleStatus,
+    calculatedMileageVisit,
+    refreshCalculatedJobFields,
     hashBytes,
     readState,
     writeState

@@ -15,10 +15,10 @@ const legacyState = {
     id: "trip-1",
     date: "08/12/2026",
     miles: 42.5,
-    vendor: "Smith Tank",
+    vendor: "Example Fabricator",
     purpose: "Inspection",
-    customer: "Shell",
-    projectNumber: "E10379-410",
+    customer: "Example Client",
+    projectNumber: "TEST-INSP-001",
     startTime: "7:30 AM",
     endTime: "4:00 PM",
     notes: "Routine visit"
@@ -28,13 +28,13 @@ const legacyState = {
       id: "inspection-1",
       tripId: "trip-1",
       date: "2026-08-12",
-      activeJobId: "AJ-002",
-      sbInspectionNo: "E10379-410",
+      activeJobId: "AJ-901",
+      sbInspectionNo: "TEST-INSP-001",
       vendorLoadNumber: "LOAD-0007A",
       acceptanceStatus: "Accepted",
       activity: "Fit-up Inspection",
-      customer: "Shell",
-      inspectionLocation: "Smith Tank"
+      customer: "Example Client",
+      inspectionLocation: "Example Shop"
     }]
   }
 };
@@ -63,6 +63,24 @@ assert.deepEqual(
 );
 assert.equal(preserved.vendorLoadNumber, "OLD-LOAD", "Existing legacy field must not be overwritten");
 
+const multiActivity = data.migrateInspection({
+  id: "inspection-multi",
+  inspectionType: "Hydro / Pressure Test",
+  activities: ["Hydro / Pressure Test", "Coating Inspection", "Documentation Review"]
+});
+assert.deepEqual(Array.from(data.inspectionActivities(multiActivity)), [
+  "Hydro / Pressure Test", "Coating Inspection", "Documentation Review"
+], "One inspection must retain every selected activity");
+
+const migratedLegacyActivity = data.migrateInspection({
+  id: "inspection-legacy-activity",
+  inspectionType: "Inspection",
+  activity: "NDE review and coating inspection"
+});
+assert.deepEqual(Array.from(data.inspectionActivities(migratedLegacyActivity)), [
+  "Coating Inspection", "NDE Review"
+], "Legacy migration must infer every recognized activity from the existing Activity text");
+
 const withRate = data.migrateState({
   ...migrated,
   workflow: { ...migrated.workflow, mileageRate: "0.70" }
@@ -70,14 +88,14 @@ const withRate = data.migrateState({
 const concur = data.concurRows(withRate);
 assert.equal(concur.length, 1);
 assert.equal(concur[0].estimated, 29.75);
-assert.deepEqual(Array.from(concur[0].context.activeJobs), ["AJ-002"]);
+assert.deepEqual(Array.from(concur[0].context.activeJobs), ["AJ-901"]);
 
 const suggestions = data.timesheetEntries(withRate);
 assert.equal(suggestions.length, 1, "Linked trip and inspection should produce one daily suggestion");
 assert.equal(suggestions[0].sourceType, "trip");
 assert.equal(suggestions[0].hours, "", "Trip duration must not be assumed as timesheet hours");
-assert.match(suggestions[0].ajSbProject, /AJ-002/);
-assert.match(suggestions[0].ajSbProject, /E10379-410/);
+assert.match(suggestions[0].ajSbProject, /AJ-901/);
+assert.match(suggestions[0].ajSbProject, /TEST-INSP-001/);
 
 const manualState = data.migrateState({
   ...withRate,
@@ -103,7 +121,7 @@ assert.ok(week.incompleteDays.length > 0, "Incomplete weekdays must be visible")
 
 const concurCsv = data.makeConcurCSV(withRate);
 assert.match(concurCsv, /Concur Report \/ Batch/);
-assert.match(concurCsv, /AJ-002/);
+assert.match(concurCsv, /AJ-901/);
 const timesheetCsv = data.makeTimesheetCSV(manualState);
 assert.match(timesheetCsv, /Report Writing/);
 

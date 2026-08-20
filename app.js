@@ -8,6 +8,8 @@
   const STA_DB_STORE = "privateFiles";
   const STA_MASTER_KEY = "staMaster";
   const METERS_PER_MILE = 1609.344;
+  const APP_VERSION = "7.0.0-preview";
+  const APP_BUILD = "2026.08.20-full-upgrade-list.1";
 
   const DEFAULT_SETTINGS = {
     roundMiles: true,
@@ -41,7 +43,10 @@
     lastConfirmedISO: null,
     lastConfirmedTripCount: 0,
     lastFilename: "",
-    lastRequiredISO: null
+    lastRequiredISO: null,
+    lastRestoreTestISO: null,
+    lastRestoreTestFilename: "",
+    lastRestoreTestSummary: ""
   };
 
   const $ = (id) => document.getElementById(id);
@@ -94,7 +99,8 @@
       activeJobs: parsed?.activeJobs,
       activeJobsInitializedISO: parsed?.activeJobsInitializedISO,
       facilityProfiles: parsed?.facilityProfiles,
-      activeJobImports: parsed?.activeJobImports
+      activeJobImports: parsed?.activeJobImports,
+      activeJobUpdateProposals: parsed?.activeJobUpdateProposals
     };
     return migrateCompleteState(sanitized);
   }
@@ -328,6 +334,14 @@
     pill.className = dataRequired ? "pill backup-required" : "pill ready";
     text.innerHTML = `<div class="backup-status-line">${dataStatus}</div><div class="backup-status-line backup-photo-notice">${photoStatus}</div>`;
     $("backupCard")?.classList.toggle("backup-card-required", dataRequired);
+
+    const restoreStatus = $("restoreTestStatus");
+    if (restoreStatus) {
+      restoreStatus.textContent = state.backup.lastRestoreTestISO
+        ? `Last restore test passed ${formatBackupDate(state.backup.lastRestoreTestISO)} • ${state.backup.lastRestoreTestFilename || "backup"}${state.backup.lastRestoreTestSummary ? ` • ${state.backup.lastRestoreTestSummary}` : ""}`
+        : "No backup restore test has been recorded on this device.";
+      restoreStatus.className = `gps-status ${state.backup.lastRestoreTestISO ? "good" : "warn"}`;
+    }
   }
 
   function requireBackupBeforeNewTrip() {
@@ -389,6 +403,9 @@
     $("savedCustomers").value = state.settings.customers.join("\n");
     $("savedVendors").value = state.settings.vendors.join("\n");
     $("savedPurposes").value = state.settings.purposes.join("\n");
+    if ($("appVersionInfo")) {
+      $("appVersionInfo").textContent = `Mileage Logger ${APP_VERSION} • Build ${APP_BUILD}`;
+    }
 
     document.body.classList.toggle("dark", Boolean(state.settings.dark));
     document.querySelector('meta[name="theme-color"]').setAttribute(
@@ -1669,6 +1686,8 @@
     return {
       backupFormat: "MileageLoggerDataBackup",
       backupVersion: 6,
+      appVersion: APP_VERSION,
+      appBuild: APP_BUILD,
       createdISO: new Date().toISOString(),
       tripCount: state.trips.length,
       photoCount: inspectionPhotos.length,
@@ -1822,38 +1841,57 @@
     return saveFullBackupToFiles({ automatic: false });
   }
 
+  async function readBackupFile(file) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const isZip = file.name.toLowerCase().endsWith(".zip") || (bytes[0] === 0x50 && bytes[1] === 0x4b);
+    let parsed;
+    let restoredPhotos = null;
+
+    if (isZip) {
+      if (!window.fflate) throw new Error("The ZIP restore component is unavailable.");
+      const entries = window.fflate.unzipSync(bytes);
+      if (!entries["app-data.json"]) throw new Error("The ZIP does not contain app-data.json.");
+      parsed = JSON.parse(window.fflate.strFromU8(entries["app-data.json"]));
+      const embeddedPhotos = (parsed.photoManifest || []).filter((photo) => photo.path);
+      if (embeddedPhotos.length) restoredPhotos = embeddedPhotos.map((photo) => {
+        const photoBytes = entries[photo.path];
+        if (!photoBytes) throw new Error(`The ZIP is missing photo ${photo.name || photo.id}.`);
+        return { ...photo, blob: new Blob([photoBytes], { type: photo.type || "image/jpeg" }) };
+      });
+    } else {
+      parsed = JSON.parse(new TextDecoder().decode(bytes));
+    }
+
+    const imported = parsed?.backupFormat === "MileageLoggerFullBackup" || parsed?.backupFormat === "MileageLoggerDataBackup"
+      ? parsed.appState
+      : parsed;
+    if (!imported || !Array.isArray(imported.trips)) throw new Error("Backup does not contain a trip list.");
+    return { parsed, imported, restoredPhotos };
+  }
+
+  async function testBackupRestore(file) {
+    try {
+      const { imported } = await readBackupFile(file);
+      const normalized = sanitizeState(imported);
+      const inspections = Array.isArray(normalized.settings?.inspections) ? normalized.settings.inspections.length : 0;
+      const jobs = Array.isArray(normalized.activeJobs) ? normalized.activeJobs.length : 0;
+      const summary = `${normalized.trips.length} trips, ${inspections} inspections, ${jobs} Active Jobs`;
+      ensureBackupState();
+      state.backup.lastRestoreTestISO = new Date().toISOString();
+      state.backup.lastRestoreTestFilename = file.name || "Backup file";
+      state.backup.lastRestoreTestSummary = summary;
+      saveState();
+      renderBackupStatus();
+      showToast("Backup restore test passed. Current app data was not changed.");
+    } catch (error) {
+      console.error("Backup restore test failed:", error);
+      window.alert(`The backup restore test failed. Current app data was not changed.\n\n${error.message}`);
+    }
+  }
+
   async function importBackupFile(file) {
     try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const isZip = file.name.toLowerCase().endsWith(".zip") || (bytes[0] === 0x50 && bytes[1] === 0x4b);
-      let parsed;
-      let restoredPhotos = null;
-
-      if (isZip) {
-        if (!window.fflate) throw new Error("The ZIP restore component is unavailable.");
-        const entries = window.fflate.unzipSync(bytes);
-        if (!entries["app-data.json"]) throw new Error("The ZIP does not contain app-data.json.");
-        parsed = JSON.parse(window.fflate.strFromU8(entries["app-data.json"]));
-        const embeddedPhotos = (parsed.photoManifest || []).filter((photo) => photo.path);
-        if (embeddedPhotos.length) restoredPhotos = embeddedPhotos.map((photo) => {
-          const photoBytes = entries[photo.path];
-          if (!photoBytes) throw new Error(`The ZIP is missing photo ${photo.name || photo.id}.`);
-          return {
-            ...photo,
-            blob: new Blob([photoBytes], { type: photo.type || "image/jpeg" })
-          };
-        });
-      } else {
-        parsed = JSON.parse(new TextDecoder().decode(bytes));
-      }
-
-      const imported = parsed?.backupFormat === "MileageLoggerFullBackup" || parsed?.backupFormat === "MileageLoggerDataBackup"
-        ? parsed.appState
-        : parsed;
-
-      if (!imported || !Array.isArray(imported.trips)) {
-        throw new Error("Backup does not contain a trip list.");
-      }
+      const { imported, restoredPhotos } = await readBackupFile(file);
 
       const photoMessage = restoredPhotos === null
         ? "\n\nThis data backup contains photo filenames and descriptions, but not the actual images. Existing working copies on this device will be left untouched. Retain original images in iPhone Photos."
@@ -2766,6 +2804,7 @@
     $("activeJobsReadyPanel").classList.add("hidden");
   });
   $("restoreBackupBtn").addEventListener("click", () => $("importFile").click());
+  $("testRestoreBackupBtn").addEventListener("click", () => $("testRestoreBackupInput").click());
   $("sharePreparedBackupBtn").addEventListener("click", async () => {
     if (!preparedBackupSession) return;
     const { backup } = preparedBackupSession;
@@ -2817,6 +2856,11 @@
     const file = $("importFile").files[0];
     if (file) importBackupFile(file);
     $("importFile").value = "";
+  });
+  $("testRestoreBackupInput").addEventListener("change", () => {
+    const file = $("testRestoreBackupInput").files[0];
+    if (file) testBackupRestore(file);
+    $("testRestoreBackupInput").value = "";
   });
 
   $("saveSettingsBtn").addEventListener("click", () => {
@@ -3059,4 +3103,6 @@
   if (state.activeTrip?.trackRoute) {
     setTimeout(startRouteTracking, 400);
   }
+
+  window.MileageLoggerBuild = Object.freeze({ version: APP_VERSION, build: APP_BUILD });
 })();

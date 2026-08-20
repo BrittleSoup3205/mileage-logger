@@ -513,6 +513,7 @@
       const storedStateMissing = localStorage.getItem(APP_STATE_KEY) === null;
       let state = readAppState();
       const meta = loadMeta();
+      const conflictCountBeforeSync = meta.conflicts.length;
       const remoteRows = await fetchRemoteRecords();
       const remoteByKey = new Map(remoteRows.map((row) => [recordKey(row.record_type, row.record_id), row]));
       const cloudBootstrap = !state && storedStateMissing && remoteRows.some((row) => RECORD_TYPES.has(row.record_type));
@@ -624,7 +625,9 @@
       meta.lastSyncISO = syncISO;
       saveMeta(meta);
       await heartbeat(session, syncISO);
-      setStatus(meta.conflicts.length ? "warn" : "ready", `${cloudBootstrap ? "This device was initialized from existing cloud data. " : ""}${outgoing.length ? `${outgoing.length} change${outgoing.length === 1 ? "" : "s"} synchronized. ` : ""}Synced ${new Date(syncISO).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.${conflictMessage(meta)}`);
+      const newConflictCount = Math.max(0, meta.conflicts.length - conflictCountBeforeSync);
+      const historicalNotice = !newConflictCount && meta.conflicts.length ? " Historical conflicts remain available in Sync History." : "";
+      setStatus(newConflictCount ? "warn" : "ready", `${cloudBootstrap ? "This device was initialized from existing cloud data. " : ""}${outgoing.length ? `${outgoing.length} change${outgoing.length === 1 ? "" : "s"} synchronized. ` : ""}Synced ${new Date(syncISO).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.${newConflictCount ? conflictMessage(meta) : historicalNotice}`);
       return true;
     } catch (error) {
       console.warn("Mileage Logger sync failed:", error);
@@ -665,6 +668,12 @@
     if (signOutButton) signOutButton.disabled = !signedIn;
     const identity = $("multiDeviceIdentity");
     if (identity) identity.textContent = signedIn ? `Signed in: ${session.user?.email || config.email}` : "Not signed in";
+    const history = $("multiDeviceSyncHistory");
+    if (history) {
+      const meta = loadMeta();
+      const conflicts = [...meta.conflicts].reverse();
+      history.innerHTML = `<p><strong>Current sync health:</strong> ${escapeHTML(statusLabel(lastStatus.state))}</p><p><strong>Last successful sync:</strong> ${meta.lastSyncISO ? escapeHTML(new Date(meta.lastSyncISO).toLocaleString()) : "Not yet completed"}</p>${conflicts.length ? `<div class="sync-history-list">${conflicts.map((item) => `<article><strong>${escapeHTML(item.type)} ${escapeHTML(item.id)}</strong><small>${escapeHTML(new Date(item.at).toLocaleString())} • ${escapeHTML(item.winner)} copy kept • remote ${escapeHTML(item.remoteDevice || "other device")}</small></article>`).join("")}</div>` : `<p>No historical conflicts.</p>`}`;
+    }
   }
 
   function injectUI() {
@@ -695,6 +704,7 @@
       </div>
       <p class="sync-explainer">Use the same Mileage Logger records on iPhone, iPad, and PC. Local data remains available offline; structured changes synchronize when internet is available.</p>
       <div id="multiDeviceSyncStatus" class="sync-status">Multi-device sync not configured.</div>
+      <details class="sync-advanced"><summary>Sync History</summary><div id="multiDeviceSyncHistory"></div></details>
       <div class="sync-grid">
         <label>Sync email<input id="multiDeviceEmail" type="email" autocomplete="email" value="${escapeHTML(config.email)}" placeholder="Your private sync login"></label>
         <label>Device name<input id="multiDeviceDeviceLabel" value="${escapeHTML(config.deviceLabel)}" placeholder="Example: Jeremy's iPhone"></label>

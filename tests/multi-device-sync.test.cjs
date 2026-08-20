@@ -25,7 +25,7 @@ assert.match(sync, /DEFAULT_PROJECT_URL/, "Cloud project should be preconfigured
 assert.match(sync, /DEFAULT_PUBLISHABLE_KEY/, "Only the public publishable key may be preconfigured in the client");
 assert.match(sync, /initialCloudBootstrap/, "A newly linked second device must prefer existing cloud state on its first synchronization");
 assert.match(sync, /cloudBootstrap/, "An actually empty device must use the pull-only cloud bootstrap path");
-assert.match(index, /sync-engine\.js\?v=active-jobs-bootstrap-3/, "The page must request the combined bootstrap-fixed sync engine");
-assert.match(serviceWorker, /sync-engine\.js\?v=active-jobs-bootstrap-3/, "The offline cache must install the combined bootstrap-fixed sync engine");
+assert.match(index, /sync-engine\.js\?v=full-upgrade-list-1/, "The page must request the upgraded sync engine");
+assert.match(serviceWorker, /sync-engine\.js\?v=full-upgrade-list-1/, "The offline cache must install the upgraded sync engine");
 
 console.log("Multi-device sync regression checks passed.");

@@ -63,7 +63,7 @@ function photo(index, extra = {}) {
 
 assert.ok(api, "Inspection report test API should be available without initializing the UI");
 
-for (const count of [0, 1, 4, 5, 8, 13]) {
+for (const count of [0, 1, 4, 5, 8, 13, 25, 50]) {
   const references = api.inspectionSpecificPhotoReferences({ photos: Array.from({ length: count }, (_, index) => photo(index + 1)) });
   assert.equal(references.length, count, `${count} inspection photos should remain selected`);
   references.forEach((item, index) => {
@@ -81,7 +81,7 @@ assert.deepEqual(selected.map((item) => item.id), ["photo-1", "photo-3"], "Dupli
 const state = {
   trips: [{ id: "trip-1", date: "2026-08-14", vendor: "Vendor destination", purpose: "Shop inspection", miles: 42.5, startTime: "08:00", endTime: "10:00" }],
   settings: {
-    activeJobs: [{ aj: "AJ-900", inspectionNo: "E10000-900", workbookClient: "Client", projectName: "Project", reportingVendor: "Reporting Vendor", vendorJobs: "V-44" }],
+    activeJobs: [{ aj: "AJ-900", inspectionNo: "TEST-INSP-900", workbookClient: "Example Client", projectName: "Synthetic Project", reportingVendor: "Example Fabricator", vendorJobs: "TEST-SHOP-44" }],
     inspections: []
   }
 };
@@ -90,10 +90,10 @@ const inspection = {
   tripId: "trip-1",
   activeJobId: "AJ-900",
   date: "2026-08-14",
-  customer: "Client",
-  projectName: "Project",
-  reportingVendor: "Reporting Vendor",
-  inspectionLocation: "Subvendor Shop",
+  customer: "Example Client",
+  projectName: "Synthetic Project",
+  reportingVendor: "Example Fabricator",
+  inspectionLocation: "Example Subvendor Shop",
   equipmentTag: "V-101",
   isoDrawingNumber: "ISO-22",
   pieceSpoolNumber: "SP-7",
@@ -119,7 +119,7 @@ const model = api.buildInspectionPreviewModel(state, inspection);
 const markup = api.inspectionPreviewMarkup(model);
 assert.equal(JSON.stringify(state), before, "Preview model and markup must not alter inspection state");
 assert.match(markup, /AJ-900/);
-assert.match(markup, /E10000-900/);
+assert.match(markup, /TEST-INSP-900/);
 assert.match(markup, /42\.5 mi/);
 for (const text of ["Summary text", "Quick note text", "Generated report text", "All observations text", "Deficiency detail text", "C-200", "2.1, 2.3", "Satisfactory", "LOAD-X", "Verify repair"]) {
   assert.match(markup, new RegExp(text));
@@ -143,8 +143,42 @@ assert.match(source, /index < 4[^]*?setEmptyPhotoCell[^]*?clearPhotoCell/, "Extr
 assert.match(source, /createElementNS\(WORD_NS, "w:cantSplit"\)/, "Photo rows must stay together across page breaks");
 assert.doesNotMatch(source, /const supportedPhotos =[^]*?\.slice\(0, 4\)/, "Word export must not cap photos at four");
 
+const mixedNdeSections = api.reportSectionText({
+  ...inspection,
+  activities: ["NDE Review", "Dimensional Inspection"],
+  activity: "Dimensional inspection and general documentation review",
+  observations: "General dimensional observations remain in the inspection audit section."
+});
+assert.match(mixedNdeSections.inspectionAudit, /General dimensional observations/,
+  "Selecting NDE alongside other work must not steal unrelated general observations");
+assert.doesNotMatch(mixedNdeSections.ndeReview, /General dimensional observations/,
+  "The NDE section must not claim mixed-activity general observations");
+
+const sectionDeficiency = "Synthetic section exception requires repair.";
+const deficiencySections = api.reportSectionText({
+  ...inspection,
+  summary: "",
+  deficiencies: sectionDeficiency,
+  generatedReportLanguage: `Inspection completed. A deficiency or exception was recorded: ${sectionDeficiency}`
+});
+assert.equal((Object.values(deficiencySections).join("\n").match(/Synthetic section exception requires repair\./g) || []).length, 1,
+  "Template-routed Word sections must contain a deficiency or exception exactly once");
+
 (async () => {
-  for (const count of [0, 1, 4, 5, 8, 13]) {
+  const repeatedDeficiency = "Synthetic flange exception requires repair.";
+  const deficiencyBytes = await api.buildInspectionDocx({
+    ...inspection,
+    summary: `Summary entered. ${repeatedDeficiency}`,
+    quickNote: `Quick note entered. ${repeatedDeficiency}`,
+    observations: `General observations entered. ${repeatedDeficiency}`,
+    deficiencies: repeatedDeficiency,
+    generatedReportLanguage: `Inspection completed. A deficiency or exception was recorded: ${repeatedDeficiency}`
+  }, []);
+  const deficiencyXml = fflate.strFromU8(fflate.unzipSync(deficiencyBytes)["word/document.xml"]);
+  assert.equal((deficiencyXml.match(/Synthetic flange exception requires repair\./g) || []).length, 1,
+    "A deficiency or exception must appear exactly once in the Word report");
+
+  for (const count of [0, 1, 4, 5, 8, 13, 25, 50]) {
     const photos = Array.from({ length: count }, (_, index) => photo(index + 1));
     const bytes = await api.buildInspectionDocx(inspection, photos);
     if (count === 13 && process.env.INSPECTION_DOCX_FIXTURE) {
