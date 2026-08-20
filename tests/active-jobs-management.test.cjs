@@ -48,20 +48,35 @@ const bytes = makeWorkbook([
   ["ACTIVE JOBS — AUTHORITATIVE CURRENT REGISTER"],
   [], [], [], [],
   headers,
-  ["AJ-016", "E10379-499", "Shell Norco", "Exact Project", "000123", "PO-7", "Vendor, Inc.", "00-17/A", "Main Yard", "IN PROCESS", "Do not infer", "Open", 46249],
-  ["AJ-017", "E10379-500", "Shell Norco", "Blank Test", "", "", "Other Vendor", "", "", "", "", "Closed", ""]
+  ["AJ-916", "TEST-INSP-016", "Example Client", "Synthetic Project Alpha", "000123", "TEST-PO-7", "Example Fabricator, Inc.", "00-17/A", "Example Yard", "IN PROCESS", "Do not infer", "Open", 46249],
+  ["AJ-917", "TEST-INSP-017", "Example Client", "Synthetic Blank Test", "", "", "Example Fabricator B", "", "", "", "", "Closed", ""]
 ]);
 
 const parsed = management.parseActiveJobsWorkbookBytes(bytes, fflate);
 assert.equal(parsed.sheetName, "Active Jobs");
 assert.equal(parsed.headerRow, 6);
 assert.equal(parsed.jobs.length, 2);
-assert.equal(parsed.jobs[0].aj, "AJ-016");
+assert.equal(parsed.jobs[0].aj, "AJ-916");
 assert.equal(parsed.jobs[0].clientProjectNo, "000123", "Text identifiers must preserve leading zeroes");
 assert.equal(parsed.jobs[0].vendorJobs, "00-17/A", "Shop identifiers must remain exact text");
 assert.equal(parsed.jobs[0].lastInspectionDate, "2026-08-15", "Excel dates should become ISO dates");
 assert.equal(parsed.jobs[1].clientProjectNo, "", "Blank fields must remain blank");
 assert.throws(() => management.parseActiveJobsWorkbookBytes(makeWorkbook([headers], "Wrong Sheet"), fflate), /worksheet named/);
+
+const numericStatus = management.parseActiveJobsWorkbookBytes(makeWorkbook([
+  headers,
+  ["AJ-957", "TEST-INSP-057", "Example Client", "Synthetic Project", "", "", "Example Fabricator", "", "", 57, "Review", "Open", ""]
+]), fflate).jobs[0];
+assert.equal(numericStatus.status, "", "A numeric Current Status such as 57 must be treated as blank");
+assert.match(numericStatus._importWarnings.join(" "), /numeric or implausible/);
+
+const calculatedState = {
+  activeJobs: [{ aj: "AJ-957", status: "57", lastMileageLoggerVisit: "#REF!" }],
+  settings: { inspections: [{ id: "i-57", activeJobId: "AJ-957", date: "2026-08-19", tripSnapshot: { date: "2026-08-20" } }] }
+};
+management.refreshCalculatedJobFields(calculatedState);
+assert.equal(calculatedState.activeJobs[0].status, "", "Stored numeric status must be repaired during migration");
+assert.equal(calculatedState.activeJobs[0].lastMileageLoggerVisit, "2026-08-20", "Last Mileage Logger Visit must derive from linked visit data instead of a workbook #REF value");
 
 const current = [
   { aj: "AJ-001", inspectionNo: "E-1", reportingVendor: "Vendor A", projectName: "Old", openClosed: "Open" },
@@ -170,14 +185,14 @@ const seededAgain = management.migrateState(seeded, current);
 assert.equal(seededAgain.activeJobs.length, 3, "First-run migration must not duplicate jobs");
 
 const recoverySeed = [
-  { aj: "AJ-012", inspectionNo: "E10372-410", reportingVendor: "Cembell", openClosed: "" },
-  { aj: "AJ-013", inspectionNo: "E10379-410", reportingVendor: "Trade", openClosed: "" },
-  { aj: "AJ-014", inspectionNo: "E10367-408", reportingVendor: "Pipe & Steel", openClosed: "Open" },
-  { aj: "AJ-015", inspectionNo: "E10372-422", reportingVendor: "Cembell", openClosed: "Open" }
+  { aj: "AJ-912", inspectionNo: "TEST-INSP-012", reportingVendor: "Example Fabricator A", openClosed: "" },
+  { aj: "AJ-913", inspectionNo: "TEST-INSP-013", reportingVendor: "Example Fabricator B", openClosed: "" },
+  { aj: "AJ-914", inspectionNo: "TEST-INSP-014", reportingVendor: "Example Fabricator C", openClosed: "Open" },
+  { aj: "AJ-915", inspectionNo: "TEST-INSP-015", reportingVendor: "Example Fabricator D", openClosed: "Open" }
 ];
 const existingUnassignedInspection = {
-  id: "inspection-nde-review", tripId: "trip-pipe-steel", activeJobId: "", date: "2026-08-15",
-  reportingVendor: "Pipe & Steel", sbInspectionNo: "E10367-408", activity: "NDE Review",
+  id: "inspection-nde-review", tripId: "trip-example", activeJobId: "", date: "2026-08-15",
+  reportingVendor: "Example Fabricator C", sbInspectionNo: "TEST-INSP-014", activity: "NDE Review",
   summary: "RT film review", notes: "Preserve all inspection data", status: "Completed",
   photos: [{ id: "photo-existing" }], loads: [{ id: "load-existing", identifier: "Vendor load" }]
 };
@@ -185,24 +200,24 @@ const inspectionBeforeRecovery = structuredClone(existingUnassignedInspection);
 const damagedCatalogState = {
   activeJobs: recoverySeed.map((job) => ({ ...job, openClosed: "", source: "active-jobs-import" })),
   settings: { inspections: [existingUnassignedInspection] },
-  trips: [{ id: "trip-pipe-steel", projectNumber: "E10367-408", vendor: "Pipe & Steel", miles: 0 }],
+  trips: [{ id: "trip-example", projectNumber: "TEST-INSP-014", vendor: "Example Fabricator C", miles: 0 }],
   facilityProfiles: [],
   activeJobImports: []
 };
-const aj014Reference = damagedCatalogState.activeJobs.find((job) => job.aj === "AJ-014");
+const aj914Reference = damagedCatalogState.activeJobs.find((job) => job.aj === "AJ-914");
 const recovery = management.repairBlankOpenClosedFromSeed(damagedCatalogState, recoverySeed);
-assert.deepEqual(recovery.repairedAJs, ["AJ-014", "AJ-015"], "Only seed jobs with a known prior status should be repaired");
-assert.strictEqual(recovery.state.activeJobs.find((job) => job.aj === "AJ-014"), aj014Reference, "AJ-014 must be repaired in place");
-assert.equal(recovery.state.activeJobs.filter((job) => job.aj === "AJ-014").length, 1, "AJ-014 must not be duplicated or recreated");
-assert.equal(recovery.state.activeJobs.find((job) => job.aj === "AJ-014").openClosed, "Open");
-assert.equal(recovery.state.activeJobs.find((job) => job.aj === "AJ-015").openClosed, "Open");
-assert.ok(recovery.state.activeJobs.find((job) => job.aj === "AJ-014").modifiedISO, "A repaired AJ must be marked modified for normal synchronization");
-assert.equal(recovery.state.activeJobs.find((job) => job.aj === "AJ-012").openClosed, "", "AJ-012 has no known seed status and must remain blank");
-assert.equal(recovery.state.activeJobs.find((job) => job.aj === "AJ-013").openClosed, "", "AJ-013 has no known seed status and must remain blank");
+assert.deepEqual(recovery.repairedAJs, ["AJ-914", "AJ-915"], "Only seed jobs with a known prior status should be repaired");
+assert.strictEqual(recovery.state.activeJobs.find((job) => job.aj === "AJ-914"), aj914Reference, "The synthetic AJ must be repaired in place");
+assert.equal(recovery.state.activeJobs.filter((job) => job.aj === "AJ-914").length, 1, "The synthetic AJ must not be duplicated or recreated");
+assert.equal(recovery.state.activeJobs.find((job) => job.aj === "AJ-914").openClosed, "Open");
+assert.equal(recovery.state.activeJobs.find((job) => job.aj === "AJ-915").openClosed, "Open");
+assert.ok(recovery.state.activeJobs.find((job) => job.aj === "AJ-914").modifiedISO, "A repaired AJ must be marked modified for normal synchronization");
+assert.equal(recovery.state.activeJobs.find((job) => job.aj === "AJ-912").openClosed, "", "A job with no known seed status must remain blank");
+assert.equal(recovery.state.activeJobs.find((job) => job.aj === "AJ-913").openClosed, "", "A job with no known seed status must remain blank");
 assert.deepEqual(recovery.state.settings.inspections[0], inspectionBeforeRecovery, "Catalog repair must not rewrite the existing unassigned NDE Review inspection");
 assert.equal(recovery.state.settings.inspections[0].activeJobId, "", "The existing inspection must remain unassigned for the user-test assignment workflow");
-const recoveredMatches = management.matchingJobsForVisit(recovery.state, { id: "trip-pipe-steel", projectNumber: "E10367-408", vendor: "Pipe & Steel" });
-assert.equal(recoveredMatches[0]?.aj, "AJ-014", "The repaired Pipe & Steel visit must match AJ-014 again");
+const recoveredMatches = management.matchingJobsForVisit(recovery.state, { id: "trip-example", projectNumber: "TEST-INSP-014", vendor: "Example Fabricator C" });
+assert.equal(recoveredMatches[0]?.aj, "AJ-914", "The repaired synthetic visit must match its AJ again");
 assert.deepEqual(management.matchingJobsForVisit(recovery.state, { id: "trip-unmatched", projectNumber: "E-NOT-REAL", vendor: "Unrelated Vendor" }), [], "An unmatched visit must not fall back to unrelated open jobs");
 const secondRecovery = management.repairBlankOpenClosedFromSeed(recovery.state, recoverySeed);
 assert.deepEqual(secondRecovery.repairedAJs, [], "The recovery must be idempotent after the blank values are restored");
@@ -223,7 +238,7 @@ assert.equal(applied.state.settings.inspections[0].activeJobId, "AJ-001");
 assert.equal(applied.state.activeJobImports[0].counts.NEW, 1);
 
 const profileOne = management.normalizeFacilityProfile({ name: "Vendor A — Main", reportingVendor: "Vendor A", normalInspectionLocation: "Main Shop", aliases: "Paint Yard\nStorage Yard" });
-const profileTwo = management.normalizeFacilityProfile({ name: "Vendor A — Galvanizer", reportingVendor: "Vendor A", normalInspectionLocation: "AZZ" });
+const profileTwo = management.normalizeFacilityProfile({ name: "Vendor A — Galvanizer", reportingVendor: "Vendor A", normalInspectionLocation: "Example Galvanizer" });
 assert.notEqual(profileOne.id, profileTwo.id, "One vendor may have multiple Facility Profiles");
 const profileState = { activeJobs: [{ ...current[0], defaultFacilityProfileId: profileOne.id, facilityProfileIds: [profileOne.id, profileTwo.id] }], facilityProfiles: [profileOne, profileTwo], activeJobImports: [], settings: { inspections: [] } };
 assert.equal(management.facilityProfilesForJob(profileState, profileState.activeJobs[0]).length, 2, "An Active Job may explicitly use multiple Facility Profiles");
@@ -250,24 +265,16 @@ assert.match(inspectionsSource, /NO ACTIVE JOB FOUND/);
 assert.match(inspectionsSource, /Work as Pending \/ Unassigned Job/);
 assert.match(inspectionsSource, /Assign to Active Job/);
 
-const realWorkbookPath = process.env.ACTIVE_JOBS_TEST_WORKBOOK || "C:\\Users\\jcous\\OneDrive\\Desktop\\Active Jobs Master.xlsx";
-if (fs.existsSync(realWorkbookPath)) {
-  const real = management.parseActiveJobsWorkbookBytes(fs.readFileSync(realWorkbookPath), fflate);
-  assert.equal(real.sheetName, "Active Jobs");
-  assert.deepEqual(real.headers.slice(0, 12), [
+const externalWorkbookPath = process.env.ACTIVE_JOBS_TEST_WORKBOOK || "";
+if (externalWorkbookPath && fs.existsSync(externalWorkbookPath)) {
+  const external = management.parseActiveJobsWorkbookBytes(fs.readFileSync(externalWorkbookPath), fflate);
+  assert.equal(external.sheetName, "Active Jobs");
+  assert.deepEqual(external.headers.slice(0, 12), [
     "Record ID", "Inspection Job #", "Client", "Client Project Name", "Client Project Number", "S&B Order / PO",
     "Fabricator", "Shop Number", "Location", "Current Status", "Latest Known Status / Next Action", "Open / Closed"
   ]);
-  assert.equal(real.jobs.length, 15, "The attached real-world workbook should contain 15 applicable Active Jobs rows");
-  assert.equal(real.jobs.find((job) => job.aj === "AJ-014").inspectionNo, "E10367-408");
-  assert.equal(real.jobs.find((job) => job.aj === "AJ-014").clientProjectNo, "330", "Real-world identifiers must remain exact text");
-  assert.equal(real.jobs.find((job) => job.aj === "AJ-001").reportingVendor, "", "Real-world blank identifiers must remain blank");
-  assert.equal(real.jobs.some((job) => job.aj === "#REF!"), false, "Formula-only table rows must not become jobs");
-  const dataContext = { window: {} };
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "..", "active-jobs-data.js"), "utf8"), dataContext);
-  const realReview = management.buildImportReview(dataContext.window.MileageActiveJobsData.activeJobs, real.jobs);
-  assert.deepEqual(realReview.counts, { NEW: 0, UPDATED: 15, CLOSED: 0, "NO CHANGE": 0, CONFLICT: 0 }, "Routine real-workbook review should preserve known identity blanks without blocking");
-  assert.equal(realReview.warningCount, 13, "Known source blanks and grandfathered duplicate rows should remain visible as non-blocking warnings");
+  assert.ok(external.jobs.length > 0, "An explicitly supplied external workbook should contain at least one applicable row");
+  assert.equal(external.jobs.some((job) => job.aj === "#REF!"), false, "Formula-only table rows must not become jobs");
 }
 
-console.log("Active Jobs import, migration, Facility Profile, pending assignment, and real-workbook tests passed.");
+console.log("Active Jobs import, migration, Facility Profile, pending assignment, and optional-workbook tests passed.");

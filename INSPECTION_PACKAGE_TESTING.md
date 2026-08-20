@@ -13,42 +13,28 @@ Use test information only.
 7. Confirm the trip photo appears in the inspection form and remains present after saving.
 8. Export the inspection package and confirm the inherited trip photo is included.
 
-## Inspection Notes handoff
+## Word report and optional photo handoff
 
 1. Open **Inspections** and create or open a test inspection.
 2. Add at least two photos and give them captions.
 3. Save the inspection.
-4. In **Inspection History**, tap **Send to Inspection Notes**.
-5. Save the ZIP to **OneDrive > Inspection Handoffs**.
-   - On iPhone, the saved item must end in `.zip`.
-   - If Files shows a `.txt` file instead, close and reopen the preview so the latest app version loads.
-6. Move or open the ZIP on a computer and extract it.
-7. Confirm the package contains:
-   - `00_READ_ME_FIRST.txt`;
-   - a structured handoff JSON file;
-   - a PDF report;
-   - an editable Word report;
-   - an inspection update text file;
-   - an inspection data CSV file;
-   - a photo-text file;
-   - an HTML photo index; and
-   - a `Photos` folder.
-8. Confirm the PDF opens, includes the inspection information, and shows the attached photos.
-9. Confirm the Word report opens, can be edited, and shows the same inspection information and photos.
-10. Confirm the HTML photo index opens in a browser and shows each captioned photo.
-11. Confirm the CSV opens in Excel and the text update opens in Notepad.
-12. Confirm the photos use normal image extensions and open individually.
+4. In **Inspection History**, tap **Export Word Report**.
+5. Confirm one `.docx` file is delivered without a wrapping ZIP or PDF.
+6. Open the Word report and confirm it is editable and contains the inspection information and each attached photo exactly once.
+7. Repeat with **Word + Photos ZIP** only when separate image files are required.
+8. Extract that optional ZIP and confirm it contains one editable Word report plus a `Photos` folder.
+9. Confirm the photos use normal image extensions and open individually.
 
 ## Private S&B Word template
 
 1. Open **Inspections**.
 2. Tap **Import S&B Word Template** and choose the approved blank `.docx`.
 3. Confirm the status changes to **INSTALLED**.
-4. Tap **Send to Inspection Notes** on an inspection.
+4. Tap **Export Word Report** on an inspection.
 5. Open the editable Word report and confirm:
    - the S&B branding, header, tables, and footer remain intact;
    - available customer, project, vendor, date, activity, summary, observations, action items, and release information are populated;
-   - up to four attached PNG/JPEG photos appear in the attachment grid; and
+   - up to 50 attached photos appear in the landscape, two-per-row attachment grid; and
    - the report remains editable in Microsoft Word.
 6. Confirm the S&B template itself is not present in the hosted repository or normal backup ZIP.
 

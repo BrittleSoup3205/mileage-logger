@@ -92,10 +92,10 @@
     settings.insertAdjacentHTML("beforebegin", `
       <section id="workflowQueuesSection" class="card hidden" aria-labelledby="workflowQueuesTitle">
         <div class="section-heading">
-          <div><p class="eyebrow">One daily activity, reused</p><h2 id="workflowQueuesTitle">Concur & Timesheet Queues</h2></div>
+          <div><p class="eyebrow">Administrative work — separate from inspections</p><h2 id="workflowQueuesTitle">Concur &amp; Timesheet Queues</h2></div>
           <button id="closeWorkflowQueuesBtn" class="button button-secondary button-small" type="button">Close</button>
         </div>
-        <p class="muted">Trips and inspections suggest entries. You confirm reimbursement and work hours; trip duration is never assumed to be total work time.</p>
+        <p class="muted">These administrative queues do not affect inspection completion, reports, mileage, or synchronization. Trips and inspections only suggest entries; you confirm reimbursement and actual work hours.</p>
 
         <section class="workflow-subsection">
           <div class="section-heading compact"><div><p class="eyebrow">Trip-level tracking</p><h3>Concur Mileage Reimbursement</h3></div><span id="concurQueueCount" class="pill"></span></div>
@@ -142,7 +142,7 @@
       </section>`);
 
     const quick = document.querySelector(".quick-actions");
-    quick?.insertAdjacentHTML("beforeend", `<button id="workflowQueuesBtn" class="button button-secondary button-large" type="button">Concur & Timesheet</button>`);
+    quick?.insertAdjacentHTML("beforeend", `<button id="workflowQueuesBtn" class="button button-secondary button-large" type="button">Administrative Queues</button>`);
     const nav = document.querySelector(".bottom-nav");
     nav?.insertAdjacentHTML("beforeend", `<button id="workflowQueuesNavBtn" type="button">Queues</button>`);
   }
@@ -215,9 +215,13 @@
     $("timesheetWeekInput").value = visibleWeekStart;
     $("manualTimeDate").value = summary.dates.includes($("manualTimeDate").value) ? $("manualTimeDate").value : visibleWeekStart;
     $("timesheetWeekStatus").textContent = summary.weekStatus.status.toUpperCase();
+    const incompleteLabels = (summary.incompleteDetails || []).map((item) => {
+      const day = new Date(`${item.date}T12:00:00`).toLocaleDateString("en-US", { weekday: "short" });
+      return `${day} — ${(item.reasons || ["Hours need confirmation"]).join("; ")}`;
+    });
     const warning = summary.incompleteDays.length
-      ? `${summary.incompleteDays.length} weekday${summary.incompleteDays.length === 1 ? "" : "s"} need confirmed hours.`
-      : "All weekdays have confirmed hours.";
+      ? `${summary.incompleteDays.length} day${summary.incompleteDays.length === 1 ? "" : "s"} need confirmed hours: ${incompleteLabels.join(" | ")}`
+      : "All required days have confirmed hours.";
     $("timesheetWeekSummary").innerHTML = `<strong>${summary.total.toFixed(2)} hours for week of ${escapeHTML(displayDate(summary.weekStart))}</strong><span class="${summary.incompleteDays.length ? "workflow-warning" : "workflow-complete"}">${escapeHTML(warning)}</span>`;
     $("submitTimesheetWeekBtn").disabled = Boolean(summary.incompleteDays.length || summary.weekStatus.status === "Submitted" || summary.weekStatus.status === "Approved");
     $("submitTimesheetWeekBtn").textContent = summary.weekStatus.status === "Approved" ? "Week Approved" : summary.weekStatus.status === "Submitted" ? "Week Submitted" : "Mark Entire Week Submitted";

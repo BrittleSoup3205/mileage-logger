@@ -176,17 +176,17 @@ async function testRepairedActiveJobUsesNormalSynchronization() {
     backup: {},
     settings: { inspections: [] },
     workflow: { timesheetEntries: [], timesheetWeeks: {} },
-    activeJobs: [{ aj: "AJ-014", inspectionNo: "E10367-408", reportingVendor: "Pipe & Steel", openClosed: "" }],
+    activeJobs: [{ aj: "AJ-914", inspectionNo: "TEST-INSP-014", reportingVendor: "Example Fabricator", openClosed: "" }],
     facilityProfiles: [],
     activeJobImports: []
   };
   management.repairBlankOpenClosedFromSeed(state, [
-    { aj: "AJ-014", inspectionNo: "E10367-408", reportingVendor: "Pipe & Steel", openClosed: "Open" }
+    { aj: "AJ-914", inspectionNo: "TEST-INSP-014", reportingVendor: "Example Fabricator", openClosed: "Open" }
   ]);
   const harness = makeHarness({ localState: JSON.stringify(state), remoteRows: [] });
 
   assert.equal(await harness.api.syncNow({ reason: "test" }), true);
-  const pushed = harness.recordPushes.find((row) => row.record_type === "active_job" && row.record_id === "AJ-014");
+  const pushed = harness.recordPushes.find((row) => row.record_type === "active_job" && row.record_id === "AJ-914");
   assert.equal(pushed?.payload?.openClosed, "Open", "The in-place AJ repair must upload through the existing active_job sync record");
 }
 
@@ -216,11 +216,11 @@ function testActiveJobsModuleDoesNotMaterializeEmptyState() {
 }
 
 function testActiveJobsModuleRepairsExistingStoredCatalog() {
-  const existingInspection = { id: "inspection-nde", activeJobId: "", tripId: "trip-pipe", activity: "NDE Review", summary: "RT film review" };
+  const existingInspection = { id: "inspection-nde", activeJobId: "", tripId: "trip-example", activity: "NDE Review", summary: "Synthetic RT film review" };
   const storage = new Map([[APP_STATE_KEY, JSON.stringify({
-    activeJobs: [{ aj: "AJ-014", inspectionNo: "E10367-408", reportingVendor: "Pipe & Steel", openClosed: "" }],
+    activeJobs: [{ aj: "AJ-914", inspectionNo: "TEST-INSP-014", reportingVendor: "Example Fabricator", openClosed: "" }],
     settings: { inspections: [existingInspection] },
-    trips: [{ id: "trip-pipe", projectNumber: "E10367-408", vendor: "Pipe & Steel" }],
+    trips: [{ id: "trip-example", projectNumber: "TEST-INSP-014", vendor: "Example Fabricator" }],
     backup: { pendingChangeCount: 2 }
   })]]);
   let readyHandler = null;
@@ -239,7 +239,7 @@ function testActiveJobsModuleRepairsExistingStoredCatalog() {
     addEventListener() {},
     dispatchEvent() {},
     setTimeout: (callback) => { callback(); return 1; },
-    MileageActiveJobsData: { activeJobs: [{ aj: "AJ-014", inspectionNo: "E10367-408", reportingVendor: "Pipe & Steel", openClosed: "Open" }] },
+    MileageActiveJobsData: { activeJobs: [{ aj: "AJ-914", inspectionNo: "TEST-INSP-014", reportingVendor: "Example Fabricator", openClosed: "Open" }] },
     crypto: { randomUUID: () => "test-id" }
   };
   const CustomEvent = class CustomEvent { constructor(type, options) { this.type = type; this.detail = options?.detail; } };

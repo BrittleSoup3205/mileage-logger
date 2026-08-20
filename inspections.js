@@ -2,9 +2,11 @@
   "use strict";
 
   const STATE_KEY = "mileage_logger_state_v3";
-  const INSPECTION_SCHEMA_VERSION = 4;
+  const INSPECTION_SCHEMA_VERSION = 5;
   const WORKFLOW_DATA = window.MileageWorkflowData || {};
   const REFRESH_INTERVAL_MS = 1200;
+  const INSPECTION_PHOTO_WARNING = 30;
+  const INSPECTION_PHOTO_LIMIT = 50;
   const PRIVATE_FILE_DB_NAME = "MileageLoggerPrivateFiles";
   const PRIVATE_FILE_DB_VERSION = 1;
   const PRIVATE_FILE_DB_STORE = "privateFiles";
@@ -67,6 +69,19 @@
     "Hold",
     "Rejected"
   ];
+  const INSPECTION_ACTIVITIES = Array.isArray(WORKFLOW_DATA.INSPECTION_ACTIVITIES)
+    ? WORKFLOW_DATA.INSPECTION_ACTIVITIES
+    : [
+      "Hydro / Pressure Test",
+      "Visual / Final Inspection",
+      "Dimensional Inspection",
+      "Coating Inspection",
+      "NDE Review",
+      "Material / MTR / PMI Review",
+      "Documentation Review",
+      "Inspection Release",
+      "Structural Steel Inspection"
+    ];
 
   function makeId(prefix = "inspection") {
     if (window.crypto && typeof window.crypto.randomUUID === "function") {
@@ -461,6 +476,7 @@
       inspection.pieceSpoolNumber,
       inspection.vendorLoadNumber,
       inspection.inspectionType,
+      ...inspectionActivities(inspection),
       inspection.activity,
       inspection.status,
       inspection.summary,
@@ -493,6 +509,29 @@
     return values.map((value) => (
       `<option value="${escapeHTML(value)}"${value === selectedValue ? " selected" : ""}>${escapeHTML(value)}</option>`
     )).join("");
+  }
+
+  function inspectionActivities(inspection) {
+    if (typeof WORKFLOW_DATA.inspectionActivities === "function") {
+      return WORKFLOW_DATA.inspectionActivities(inspection);
+    }
+    return Array.isArray(inspection?.activities) ? [...new Set(inspection.activities.filter(Boolean))] : [];
+  }
+
+  function activitiesMarkup(selected = []) {
+    const selectedSet = new Set(selected);
+    return INSPECTION_ACTIVITIES.map((activity) => `
+      <label class="inspection-activity-option"><input type="checkbox" data-inspection-activity value="${escapeHTML(activity)}"${selectedSet.has(activity) ? " checked" : ""}><span>${escapeHTML(activity)}</span></label>
+    `).join("");
+  }
+
+  function collectInspectionActivities() {
+    return [...document.querySelectorAll("[data-inspection-activity]:checked")].map((input) => input.value);
+  }
+
+  function hasInspectionActivity(inspection, pattern) {
+    return inspectionActivities(inspection).some((activity) => pattern.test(activity))
+      || pattern.test(String(inspection?.inspectionType || ""));
   }
 
   function injectStyles() {
@@ -609,6 +648,16 @@
       .active-job-fact small { display: block; color: var(--muted); font-weight: 700; text-transform: uppercase; }
       .inspection-workflow-panel { margin: 14px 0; padding: 13px; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--accent), transparent 97%); }
       .inspection-check-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+      .inspection-activity-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 9px; }
+      .inspection-activity-option { display: flex; align-items: center; gap: 8px; min-height: 44px; margin: 0; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--card); }
+      .inspection-activity-option input { flex: 0 0 auto; width: auto; margin: 0; }
+      .inspection-form-section { margin: 14px 0; padding: 13px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); }
+      .inspection-form-section > h3 { margin: 0 0 4px; }
+      .inspection-form-section > p { margin: 0 0 11px; }
+      .visit-hierarchy { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: stretch; gap: 8px; margin: 10px 0; }
+      .visit-hierarchy-step { display: grid; gap: 3px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+      .visit-hierarchy-step span { color: var(--muted); font-size: .75rem; font-weight: 800; }
+      .visit-hierarchy-arrow { display: grid; place-items: center; color: var(--muted); font-weight: 800; }
       .inspection-report-preview { margin: 12px 0; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
       .inspection-preview-overlay { position: fixed; inset: 0; z-index: 1000; display: grid; align-items: start; justify-items: center; overflow-y: auto; padding: 24px; background: rgba(5, 12, 24, .72); }
       .inspection-preview-overlay.hidden { display: none; }
@@ -640,7 +689,9 @@
       .bottom-nav.inspection-nav-enabled button { font-size: .76rem; }
       @media (max-width: 760px) {
         .inspection-dashboard { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-        .visit-workspace-selectors, .visit-summary-grid, .visit-notes-photos, .active-job-card-grid, .active-job-facts, .inspection-check-grid { grid-template-columns: 1fr; }
+        .visit-workspace-selectors, .visit-summary-grid, .visit-notes-photos, .active-job-card-grid, .active-job-facts, .inspection-check-grid, .inspection-activity-grid { grid-template-columns: 1fr; }
+        .visit-hierarchy { grid-template-columns: 1fr; }
+        .visit-hierarchy-arrow { transform: rotate(90deg); min-height: 20px; }
         .visit-panel-heading, .visit-workspace-job-heading { align-items: flex-start; flex-direction: column; }
         .inspection-form-grid, .inspection-form-grid.two { grid-template-columns: 1fr; }
         .followup-editor-grid { grid-template-columns: 1fr; }
@@ -716,7 +767,12 @@
             </div>
           </div>
           <div id="activeJobsConflict" class="active-job-conflict hidden"></div>
+          <details class="inspection-form-section">
+            <summary><strong>How this works</strong></summary>
+            <p><strong>Start / End</strong> records mileage. A <strong>Visit</strong> is the vendor trip. An <strong>Active Job</strong> is the reporting identity. An <strong>Inspection</strong> is the work performed. One visit can contain multiple inspections; mileage is counted once. Administrative queues do not affect inspection completion or synchronization.</p>
+          </details>
           <div id="visitCurrentContext" class="visit-current-context"></div>
+          <div id="visitHierarchy" class="visit-hierarchy"></div>
           <div class="visit-workspace-selectors">
             <label>
               Vendor / known inspection location
@@ -730,7 +786,7 @@
           <div id="visitSummary" class="visit-summary"></div>
           <div id="visitLinkedInspections" class="visit-linked-inspections"></div>
           <div id="visitNotesPhotos" class="visit-notes-photos"></div>
-          <div class="visit-workspace-job-heading"><strong>Active Jobs at this vendor</strong><span>Choose a job to open its linked inspection or add it to this visit.</span></div>
+          <div class="visit-workspace-job-heading"><strong>Active Jobs at this vendor</strong><span>Open a specific inspection or create another inspection for the same AJ and visit.</span></div>
           <div id="activeJobsCards" class="active-job-card-grid"></div>
         </section>
 
@@ -763,8 +819,8 @@
           <button id="exportInspectionsBtn" class="button button-secondary" type="button">Export Inspection CSV</button>
         </div>
         <div class="inspection-handoff-note">
-          <strong>Sending a record to Summarize Inspection Notes</strong>
-          <span>Use <em>Send to Inspection Notes</em> on an inspection, then save the ZIP in OneDrive &gt; Inspection Handoffs.</span>
+          <strong>Word-first inspection reports</strong>
+          <span>The default export is one editable Word document with every inspection photo embedded once. PDF is not generated. Use Word + Photos ZIP only when separate image files are specifically needed.</span>
         </div>
         <div id="inspectionBatchToolbar" class="inspection-batch-toolbar">
           <label><input id="selectAllVisibleInspections" type="checkbox"> Select all shown</label>
@@ -845,7 +901,11 @@
       : facilityProfilesForState(state).filter((profile) => (
         !job || !profile.reportingVendor || sameLocation(profile.reportingVendor, job.reportingVendor) || profile.id === job.defaultFacilityProfileId
       ));
-    return `<option value="">Temporary visit values only</option>${profiles.map((profile) => `<option value="${escapeHTML(profile.id)}"${profile.id === selectedId ? " selected" : ""}>${escapeHTML(profile.name || profile.shopFacilityName || profile.reportingVendor || profile.id)}</option>`).join("")}`;
+    return `<option value="">Temporary visit values only</option>${profiles.map((profile) => {
+      const preferred = Boolean(job?.defaultFacilityProfileId && profile.id === job.defaultFacilityProfileId);
+      const label = profile.name || profile.shopFacilityName || profile.reportingVendor || profile.id;
+      return `<option value="${escapeHTML(profile.id)}"${profile.id === selectedId ? " selected" : ""}>${escapeHTML(label)}${preferred ? " — Preferred" : ""}</option>`;
+    }).join("")}`;
   }
 
   function activeJobLocations(state, job) {
@@ -925,10 +985,11 @@
     const cards = $("activeJobsCards");
     const conflict = $("activeJobsConflict");
     const context = $("visitCurrentContext");
+    const hierarchy = $("visitHierarchy");
     const summary = $("visitSummary");
     const linkedPanel = $("visitLinkedInspections");
     const notesPhotos = $("visitNotesPhotos");
-    if (!vendorSelect || !visitSelect || !cards || !conflict || !context || !summary || !linkedPanel || !notesPhotos) return;
+    if (!vendorSelect || !visitSelect || !cards || !conflict || !context || !hierarchy || !summary || !linkedPanel || !notesPhotos) return;
 
     const catalog = activeJobsForState(state);
     const currentJob = activeJobById(state.settings.currentActiveJobId, state);
@@ -971,9 +1032,15 @@
     const editingInspection = state.settings.inspections.find((inspection) => inspection.id === editingInspectionId) || null;
     const contextJob = activeJobById(editingInspection?.activeJobId || currentJob?.aj, state);
     context.innerHTML = `
-      <span class="eyebrow">Current context</span>
+      <span class="eyebrow">CURRENT VISIT</span>
       <strong>${selectedTrip ? `${escapeHTML(selectedTrip.vendor || "Vendor visit")} — ${escapeHTML(selectedTrip.date || "Saved visit")}` : (selectedVendor ? `${escapeHTML(selectedVendor)} — standalone work` : "Choose a vendor and visit")}</strong>
       <small>${contextJob ? `${escapeHTML(contextJob.aj)} — ${escapeHTML(contextJob.projectName)}` : "No Active Job selected"}${selectedTrip ? (selectedTripIsActive ? " • Active trip in progress — mileage finalizes at End Trip" : ` • Mileage counted once: ${escapeHTML(formatMiles(selectedTrip.miles))}`) : " • No trip mileage attached"}</small>`;
+    hierarchy.innerHTML = `
+      <div class="visit-hierarchy-step"><span>VISIT</span><strong>${selectedTrip ? `${escapeHTML(selectedTrip.vendor || "Vendor")} — ${escapeHTML(selectedTrip.date || "Date")}` : (selectedVendor ? `${escapeHTML(selectedVendor)} — standalone` : "Choose a visit")}</strong></div>
+      <div class="visit-hierarchy-arrow" aria-hidden="true">→</div>
+      <div class="visit-hierarchy-step"><span>ACTIVE JOB</span><strong>${contextJob ? `${escapeHTML(contextJob.aj)} — ${escapeHTML(contextJob.inspectionNo)}` : "Choose a job"}</strong></div>
+      <div class="visit-hierarchy-arrow" aria-hidden="true">→</div>
+      <div class="visit-hierarchy-step"><span>INSPECTIONS</span><strong>${linkedInspections.length} linked record${linkedInspections.length === 1 ? "" : "s"}</strong></div>`;
 
     if (selectedTrip) {
       const startMap = mapLink(selectedTrip.startLocation, "Trip Start");
@@ -1035,14 +1102,16 @@
       const current = job.aj === contextJob?.aj;
       const visitRecords = linkedInspections.filter((inspection) => inspection.activeJobId === job.aj);
       const draftCount = visitRecords.filter((inspection) => inspection.status === "Draft").length;
+      const inspectionActions = visitRecords.map((inspection) => `<button class="button button-secondary button-small" type="button" data-open-workspace-inspection="${escapeHTML(inspection.id)}">Open ${escapeHTML(inspection.activity || inspection.inspectionType || "Inspection")}</button>`).join("");
       return `<article class="active-job-card${current ? " current" : ""}">
         <p class="eyebrow">${escapeHTML(job.aj)}${current ? " • CURRENT JOB" : ""}</p>
         <h4>${escapeHTML(job.inspectionNo)} — ${escapeHTML(job.projectName)}</h4>
         <p><strong>Reporting vendor:</strong> ${escapeHTML(job.reportingVendor)}</p>
         <p><strong>Vendor job:</strong> ${escapeHTML(job.vendorJobs || "—")}</p>
-        <p><strong>Status:</strong> ${escapeHTML(job.status)}</p>
+        <p><strong>Status:</strong> ${escapeHTML(job.status || "Not entered")}</p>
+        <p><strong>Next action:</strong> ${escapeHTML(job.nextAction || "Not entered")}</p>
         <p class="inspection-autosave-status">${visitRecords.length ? `${visitRecords.length} linked inspection${visitRecords.length === 1 ? "" : "s"}${draftCount ? ` • ${draftCount} draft` : ""}` : (selectedTrip ? "Not yet linked to this visit" : "Standalone available")}</p>
-        <button class="button ${current ? "button-secondary" : "inspection-button"} button-small" type="button" data-work-active-job="${escapeHTML(job.aj)}">${visitRecords.length ? "Open Linked Inspection" : (selectedTrip ? "Add Job to This Visit" : "Start Standalone Inspection")}</button>
+        <div class="inspection-record-actions">${inspectionActions}<button class="button inspection-button button-small" type="button" data-new-workspace-inspection="${escapeHTML(job.aj)}">${visitRecords.length ? `+ New Inspection for ${escapeHTML(job.aj)}` : (selectedTrip ? `Create Inspection for ${escapeHTML(job.aj)}` : `Start Standalone Inspection for ${escapeHTML(job.aj)}`)}</button></div>
       </article>`;
     }).join("") : `<div class="active-job-no-match">
       <p class="eyebrow">NO ACTIVE JOB FOUND</p>
@@ -1306,9 +1375,23 @@
         input.value.trim()
       ])
     );
+    const layouts = new Map(
+      [...document.querySelectorAll("#inspectionPhotoList [data-photo-layout]")].map((input) => [
+        input.dataset.photoLayout,
+        input.value === "fit" ? "fit" : "fill"
+      ])
+    );
+    const rotations = new Map(
+      [...document.querySelectorAll("#inspectionPhotoList [data-photo-rotation]")].map((input) => [
+        input.dataset.photoRotation,
+        ["left", "right"].includes(input.value) ? input.value : "none"
+      ])
+    );
     return currentPhotos.map((photo) => ({
       ...photo,
-      caption: captions.get(photo.id) ?? photo.caption ?? ""
+      caption: captions.get(photo.id) ?? photo.caption ?? "",
+      reportLayout: layouts.get(photo.id) ?? photo.reportLayout ?? "fill",
+      reportRotation: rotations.get(photo.id) ?? photo.reportRotation ?? "none"
     }));
   }
 
@@ -1318,7 +1401,7 @@
     if (!list || !count) return;
     photoObjectUrls.forEach((url) => URL.revokeObjectURL(url));
     photoObjectUrls = [];
-    count.textContent = String(currentPhotos.length);
+    count.textContent = `${currentPhotos.length} of ${INSPECTION_PHOTO_LIMIT}`;
 
     if (!currentPhotos.length) {
       list.innerHTML = `<div class="inspection-empty compact">No photos attached.</div>`;
@@ -1335,6 +1418,8 @@
           <strong>${escapeHTML(photo.name || "Inspection photo")}</strong>
           <small>${Number(photo.size || 0) > 0 ? `${Math.max(1, Math.round(Number(photo.size) / 1024))} KB` : ""}</small>
           <label>Caption<input data-photo-caption="${escapeHTML(photo.id)}" value="${escapeHTML(photo.caption || "")}" placeholder="What does this photo show?"></label>
+          <label>Word layout<select data-photo-layout="${escapeHTML(photo.id)}"><option value="fill"${photo.reportLayout !== "fit" ? " selected" : ""}>Landscape Fill (default)</option><option value="fit"${photo.reportLayout === "fit" ? " selected" : ""}>Fit Entire Photo</option></select></label>
+          <label>Word rotation<select data-photo-rotation="${escapeHTML(photo.id)}"><option value="none"${!["left", "right"].includes(photo.reportRotation) ? " selected" : ""}>No Rotation</option><option value="left"${photo.reportRotation === "left" ? " selected" : ""}>Rotate Left</option><option value="right"${photo.reportRotation === "right" ? " selected" : ""}>Rotate Right</option></select></label>
           <button class="button button-danger-outline button-small" type="button" data-remove-photo="${escapeHTML(photo.id)}">Remove Photo</button>
         </div>
       </article>
@@ -1364,8 +1449,21 @@
       return;
     }
 
-    const images = [...(files || [])].filter((file) => String(file.type || "").startsWith("image/"));
+    let images = [...(files || [])].filter((file) => String(file.type || "").startsWith("image/"));
     if (!images.length) return;
+    const remaining = Math.max(0, INSPECTION_PHOTO_LIMIT - currentPhotos.length);
+    if (!remaining) {
+      window.alert(`This inspection already has the ${INSPECTION_PHOTO_LIMIT}-photo maximum.`);
+      return;
+    }
+    if (images.length > remaining) {
+      window.alert(`Only ${remaining} more photo${remaining === 1 ? "" : "s"} can be added. The inspection report maximum is ${INSPECTION_PHOTO_LIMIT}.`);
+      images = images.slice(0, remaining);
+    }
+    if (currentPhotos.length < INSPECTION_PHOTO_WARNING && currentPhotos.length + images.length >= INSPECTION_PHOTO_WARNING) {
+      const proceed = window.confirm(`This inspection will contain ${currentPhotos.length + images.length} photos. Large previews and Word exports may be slower on iPhone. Continue?`);
+      if (!proceed) return;
+    }
     status.textContent = `Preparing ${images.length} photo${images.length === 1 ? "" : "s"}…`;
     status.className = "gps-status";
 
@@ -1523,6 +1621,8 @@
           <small>${activeJob ? `Reporting vendor: ${escapeHTML(activeJob.reportingVendor)} • Notes and photos attach to this AJ and this inspection record.` : "This inspection autosaves and keeps its trip, notes, photos, loads, and follow-ups. Assign it after the missing AJ is imported."}</small>
           ${activeJob ? "" : `<div class="pending-job-assignment"><select id="pendingActiveJobSelect"><option value="">Assign later…</option>${activeJobsForState(state).filter((job) => String(job.openClosed || "").toLowerCase() === "open").map((job) => `<option value="${escapeHTML(job.aj)}">${escapeHTML(job.aj)} — ${escapeHTML(job.inspectionNo)} — ${escapeHTML(job.reportingVendor)}</option>`).join("")}</select><button id="assignPendingInspectionBtn" class="button button-secondary button-small" type="button">Assign to Active Job</button></div>`}
         </div>
+        <details class="inspection-form-section">
+          <summary><strong>Change Visit / Job</strong></summary>
         <div class="facility-visit-controls">
           <label>Facility Profile<select id="inspectionFacilityProfileId">${facilityProfileOptions(state, selectedFacilityProfileId, activeJob)}</select></label>
           <button id="saveVisitToFacilityProfileBtn" class="button button-secondary button-small" type="button"${selectedFacilityProfileId ? "" : " disabled"}>Save to Facility Profile</button>
@@ -1535,7 +1635,11 @@
         </label>
 
         <div id="inspectionTripSummary" class="inspection-linked-trip"></div>
+        </details>
 
+        <details class="inspection-form-section"${activeJob ? "" : " open"}>
+          <summary><strong>Inherited report context</strong></summary>
+          <p class="muted">These values come from the selected Active Job, visit, and Facility Profile. Expand only when verification or a temporary override is needed.</p>
         <div class="inspection-form-grid">
           <label>Date<input id="inspectionDate" type="date" required value="${escapeHTML(date)}"></label>
           <label>Client<input id="inspectionCustomer" list="customerList" required value="${escapeHTML(customer)}" placeholder="Example: Shell"></label>
@@ -1545,16 +1649,18 @@
           <label>Project name<input id="inspectionProjectName" value="${escapeHTML(values.projectName || activeJob?.projectName || "")}" placeholder="Project or reporting-unit description"></label>
           <label>S&B order / PO<input id="inspectionPoJob" value="${escapeHTML(values.purchaseOrderJob || activeJob?.sbOrder || "")}" placeholder="Optional"></label>
         </div>
+        </details>
 
-        <fieldset class="inspection-workflow-panel">
-          <legend><strong>Item identification — use the first available identifiers</strong></legend>
+        <details class="inspection-workflow-panel"${values.equipmentTag || values.isoDrawingNumber || values.pieceSpoolNumber ? " open" : ""}>
+          <summary><strong>Identifiers and vendor loads</strong></summary>
+          <p class="muted">Use the first available identifiers. Leave unused fields untouched.</p>
           <div class="inspection-form-grid">
             <label>1. Equipment tag<input id="inspectionTag" value="${escapeHTML(values.equipmentTag || "")}" placeholder="Example: F-511"></label>
             <label>2. ISO drawing number<input id="inspectionIsoNumber" value="${escapeHTML(values.isoDrawingNumber || "")}" placeholder="Example: 326-0041-05A"></label>
             <label>3. Vendor job number<input id="inspectionVendorJob" value="${escapeHTML(values.vendorJobNumber || activeJob?.vendorJobs || "")}" placeholder="Shop job number"></label>
             <label>4. Piece / spool number<input id="inspectionPieceSpool" value="${escapeHTML(values.pieceSpoolNumber || "")}" placeholder="Example: 35 or 2S1"></label>
           </div>
-        </fieldset>
+        </details>
 
         <section class="inspection-workflow-panel inspection-load-panel">
           <div class="section-heading compact">
@@ -1571,21 +1677,32 @@
 
         <datalist id="inspectionProjectList"></datalist>
 
+        <section class="inspection-form-section">
+          <h3>What are you doing?</h3>
+          <p class="muted">Choose one primary type and every activity performed during this inspection. Specialized tools appear when their activity is selected.</p>
         <div class="inspection-form-grid">
-          <label>Inspection type<select id="inspectionType">${createOptionList(INSPECTION_TYPES, values.inspectionType || "Inspection")}</select></label>
+          <label>Primary inspection type<select id="inspectionType">${createOptionList(INSPECTION_TYPES, values.inspectionType || "Inspection")}</select></label>
           <label>Status<select id="inspectionStatus">${createOptionList(INSPECTION_STATUSES, values.status || (activeJob ? "Draft" : "Complete"))}</select></label>
           <label>Acceptance / release<select id="inspectionAcceptance">${createOptionList(ACCEPTANCE_STATUSES, values.acceptanceStatus || "Not Determined")}</select></label>
-          <label class="full">Activity<input id="inspectionActivity" required value="${escapeHTML(activity)}" placeholder="Inspection activity performed"></label>
+          <label class="full">Work summary<input id="inspectionActivity" required value="${escapeHTML(activity)}" placeholder="Short summary of the inspection work"></label>
         </div>
+          <div class="inspection-activity-grid">${activitiesMarkup(inspectionActivities(values))}</div>
+        </section>
 
         ${workflowSectionMarkup(values, activeJob)}
 
+        <section class="inspection-form-section">
+          <h3>Inspection / work time</h3>
+          <p class="muted">${trip ? `Suggested from visit: ${escapeHTML(trip.startTime || "not entered")}–${escapeHTML(trip.endTime || (isActiveTrip(state, trip) ? "in progress" : "not entered"))}. Confirm or change these to the actual inspection work time; they do not determine paid timesheet hours.` : "Enter the actual inspection work time. Timesheet hours remain separately confirmed."}</p>
         <div class="inspection-form-grid">
-          <label>Start time<input id="inspectionStartTime" value="${escapeHTML(startTime)}" placeholder="7:30 AM"></label>
-          <label>End time<input id="inspectionEndTime" value="${escapeHTML(endTime)}" placeholder="3:45 PM"></label>
-          <label>Hours on site<input id="inspectionHours" inputmode="decimal" value="${escapeHTML(hours)}" placeholder="8.25"></label>
+          <label>Inspection start<input id="inspectionStartTime" value="${escapeHTML(startTime)}" placeholder="7:30 AM"></label>
+          <label>Inspection end<input id="inspectionEndTime" value="${escapeHTML(endTime)}" placeholder="3:45 PM"></label>
+          <label>Inspection hours on site<input id="inspectionHours" inputmode="decimal" value="${escapeHTML(hours)}" placeholder="8.25"></label>
         </div>
+        </section>
 
+        <section class="inspection-form-section">
+        <h3>Notes and findings</h3>
         <label>Quick note for this AJ / inspection<textarea id="inspectionQuickNote" rows="3" placeholder="Short field note; it remains attached to the current AJ and inspection">${escapeHTML(values.quickNote || "")}</textarea></label>
         <label>Inspection summary<textarea id="inspectionSummary" rows="5" placeholder="Concise work-only summary">${escapeHTML(values.summary || "")}</textarea></label>
         <label>Observations<textarea id="inspectionObservations" rows="4" placeholder="Detailed observations and documents reviewed">${escapeHTML(values.observations || "")}</textarea></label>
@@ -1598,7 +1715,10 @@
           <button id="generateInspectionReportBtn" class="button button-secondary button-small" type="button">Generate Draft Report Language</button>
         </div>
         <div id="inspectionReportPreview" class="inspection-report-preview${values.generatedReportLanguage ? "" : " hidden"}">${values.generatedReportLanguage ? `<strong>Draft report language</strong><p>${escapeHTML(values.generatedReportLanguage)}</p><small>Generated only from entered facts. Review before reporting.</small>` : ""}</div>
+        </section>
 
+        <section class="inspection-form-section">
+        <h3>Evidence and follow-up</h3>
         <div class="section-heading compact">
           <div><p class="eyebrow">Visit context</p><h3>Trip-Level Photos</h3></div>
         </div>
@@ -1626,6 +1746,7 @@
           <button id="addFollowUpBtn" class="button button-secondary button-small" type="button">Add Follow-up</button>
         </div>
         <div id="followUpEditorList" class="followup-editor-list"></div>
+        </section>
 
         <div class="form-actions wrap">
           <button class="button inspection-button" type="submit">${editingInspectionWasExisting ? "Save Changes" : "Save Inspection"}</button>
@@ -1650,8 +1771,9 @@
 
   function updateInspectionWorkflowSections() {
     const type = $("inspectionType")?.value || "";
-    $("coatingWorkflow")?.classList.toggle("hidden", type !== "Coating Inspection");
-    $("structuralWorkflow")?.classList.toggle("hidden", !type.startsWith("Structural Steel"));
+    const activities = collectInspectionActivities();
+    $("coatingWorkflow")?.classList.toggle("hidden", type !== "Coating Inspection" && !activities.includes("Coating Inspection"));
+    $("structuralWorkflow")?.classList.toggle("hidden", !type.startsWith("Structural Steel") && !activities.includes("Structural Steel Inspection"));
   }
 
   function selectedCoatingSystem(activeJobId = $("inspectionActiveJobId")?.value) {
@@ -1695,14 +1817,36 @@
     return identifiers.length ? identifiers.join(", ") : "the identified work scope";
   }
 
+  function cleanReportText(value) {
+    const cleaned = String(value || "")
+      .replace(/\r\n/g, "\n")
+      .replace(/[ \t]+/g, " ")
+      .replace(/\s+([,.;:])/g, "$1")
+      .replace(/\b(\w+)\s+\1\b/gi, "$1")
+      .replace(/\bwere are\b/gi, "were")
+      .replace(/\bagainst lates\b/gi, "against the latest")
+      .replace(/ *\n */g, "\n")
+      .trim();
+    if (!cleaned) return "";
+    const seen = new Set();
+    return cleaned.split(/(?<=[.!?])\s+/).filter((sentence) => {
+      const key = sentence.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).join(" ");
+  }
+
   function generateReportLanguage(inspection) {
     const sentences = [];
     const location = inspection.inspectionLocation || inspection.vendor || "the documented inspection location";
     const reportingVendor = inspection.reportingVendor || inspection.vendor || "the reporting vendor";
     const type = inspection.inspectionType || "Inspection";
-    sentences.push(`Performed ${type.toLowerCase()} for ${inspectionItemPhrase(inspection)} at ${location} for reporting vendor ${reportingVendor}.`);
+    const activities = inspectionActivities(inspection);
+    const activityDescription = activities.length ? activities.join(", ") : type;
+    sentences.push(`Performed ${activityDescription.toLowerCase()} for ${inspectionItemPhrase(inspection)} at ${location} for reporting vendor ${reportingVendor}.`);
 
-    if (type === "Coating Inspection") {
+    if (hasInspectionActivity(inspection, /coat/i)) {
       const coating = inspection.coating || {};
       const job = activeJobById(inspection.activeJobId);
       const system = (COATING_SYSTEMS[job?.facility] || []).find((item) => item[0] === coating.system);
@@ -1726,7 +1870,7 @@
       if (coating.vendorQc === "Satisfactory") sentences.push("Vendor QC activities or documentation reviewed during the visit were satisfactory as applicable.");
     }
 
-    if (type.startsWith("Structural Steel")) {
+    if (hasInspectionActivity(inspection, /structural|steel/i)) {
       const steel = inspection.structural || {};
       if (steel.material === "Satisfactory") sentences.push("Material condition and identification were reviewed and found satisfactory.");
       if (steel.welds === "Satisfactory") sentences.push("Visual weld condition was reviewed and found satisfactory.");
@@ -1743,7 +1887,42 @@
     if (inspection.acceptanceStatus && inspection.acceptanceStatus !== "Not Determined") {
       sentences.push(`Inspection disposition: ${inspection.acceptanceStatus}.`);
     }
-    return sentences.join(" ");
+    return cleanReportText(sentences.join(" "));
+  }
+
+  function coatingReportLanguage(inspection) {
+    if (!hasInspectionActivity(inspection, /coat/i)) return "";
+    const coating = inspection.coating || {};
+    const job = activeJobById(inspection.activeJobId);
+    const system = (COATING_SYSTEMS[job?.facility] || []).find((item) => item[0] === coating.system);
+    const details = [];
+    if (coating.system) details.push(`System ${coating.system}${system ? ` — ${system[1]}` : ""}`);
+    if (coating.manufacturer) details.push(`Products: ${coating.manufacturer}`);
+    if (coating.blast) details.push(`Surface preparation: ${coating.blast}`);
+    if (coating.profileReadings) details.push(`Anchor-profile readings: ${coating.profileReadings} mils`);
+    if (coating.dftReadings) details.push(`DFT readings: ${coating.dftReadings} mils`);
+    if (coating.environment) details.push(`Environmental conditions: ${coating.environment}`);
+    if (coating.appearance) details.push(`Appearance: ${coating.appearance}`);
+    if (coating.vendorQc) details.push(`Vendor QC: ${coating.vendorQc}`);
+    return details.length ? `${details.join(". ")}.` : "Coating inspection performed; no detailed coating results were entered.";
+  }
+
+  function reportSectionText(inspection) {
+    const activities = inspectionActivities(inspection);
+    const generalActivities = activities.filter((activity) => !/coat|nde|release/i.test(activity));
+    const ndeSelected = hasInspectionActivity(inspection, /nde/i);
+    const loadText = inspectionLoads(inspection).length ? `Vendor Loads:\n${loadDetailsText(inspection)}` : "";
+    return {
+      description: cleanReportText(inspection.summary || inspection.generatedReportLanguage || generateReportLanguage(inspection)),
+      actionItems: inspectionFollowUpText(inspection, "All"),
+      inspectionAudit: [ndeSelected ? "" : cleanReportText(inspection.observations), loadText].filter(Boolean).join("\n"),
+      shopInspection: cleanReportText([generalActivities.join(", "), inspection.activity].filter(Boolean).join(" — ")),
+      ndeReview: ndeSelected ? (cleanReportText(inspection.observations) || "NDE review performed.") : "",
+      coatingInspection: coatingReportLanguage(inspection),
+      inspectionRelease: hasInspectionActivity(inspection, /release|final/i) || inspection.acceptanceStatus !== "Not Determined"
+        ? inspection.acceptanceStatus
+        : ""
+    };
   }
 
   function previewGeneratedReportLanguage() {
@@ -1953,6 +2132,7 @@
       // Keep the legacy alias so old backups and integrations still see the first load.
       vendorLoadNumber: loads[0]?.identifier || "",
       inspectionType: $("inspectionType")?.value || "Inspection",
+      activities: collectInspectionActivities(),
       activity: $("inspectionActivity")?.value.trim() || "",
       status: statusOverride || $("inspectionStatus")?.value || "Draft",
       acceptanceStatus: $("inspectionAcceptance")?.value || "Not Determined",
@@ -2012,6 +2192,26 @@
       [inspection.vendor, inspection.reportingVendor].filter(Boolean).forEach((vendor) => {
         if (!nextState.settings.vendors.includes(vendor)) nextState.settings.vendors.push(vendor);
       });
+      if (inspection.activeJobId && inspection.status !== "Draft") {
+        const job = (nextState.activeJobs || []).find((item) => item.aj === inspection.activeJobId);
+        nextState.activeJobUpdateProposals = Array.isArray(nextState.activeJobUpdateProposals) ? nextState.activeJobUpdateProposals : [];
+        const openFollowUps = (inspection.followUps || []).filter((item) => item.status !== "Closed");
+        const dueDates = openFollowUps.map((item) => item.dueDate).filter(Boolean).sort();
+        const proposal = {
+          id: `active-job-update-${inspection.id}`,
+          inspectionId: inspection.id,
+          activeJobId: inspection.activeJobId,
+          currentStatus: job?.status || "",
+          nextAction: openFollowUps.map((item) => item.action).filter(Boolean).join("; "),
+          lastInspectionDate: inspection.date || "",
+          lastMileageLoggerVisit: inspection.tripSnapshot?.date || (inspection.tripId ? inspection.date : ""),
+          nextExpectedInspection: dueDates[0] || "",
+          createdISO: nowISO()
+        };
+        const proposalIndex = nextState.activeJobUpdateProposals.findIndex((item) => item.id === proposal.id);
+        if (proposalIndex >= 0) nextState.activeJobUpdateProposals[proposalIndex] = proposal;
+        else nextState.activeJobUpdateProposals.unshift(proposal);
+      }
     }, options);
   }
 
@@ -2194,6 +2394,7 @@
         ["Piece / spool", inspection.pieceSpoolNumber || ""],
         ["Date", displayDate(inspection.date)],
         ["Inspection type", inspection.inspectionType || "Inspection"],
+        ["Activities performed", inspectionActivities(inspection).join(" | ")],
         ["Activity", inspection.activity || ""],
         ["Status", inspection.status || "Draft"],
         ["Acceptance / release", inspection.acceptanceStatus || "Not Determined"]
@@ -2274,7 +2475,7 @@
       </div>
       <footer class="inspection-preview-actions">
         <button class="button button-secondary" type="button" data-preview-edit-inspection="${escapeHTML(model.id)}">Edit Inspection</button>
-        <button class="button inspection-button" type="button" data-preview-export-inspection="${escapeHTML(model.id)}">Generate / Send to Inspection Notes</button>
+        <button class="button inspection-button" type="button" data-preview-export-inspection="${escapeHTML(model.id)}">Export Word Report</button>
         <button class="button button-quiet" type="button" data-close-inspection-preview>Close Preview</button>
       </footer>
     `;
@@ -2411,7 +2612,8 @@
             <button class="button button-secondary button-small" type="button" data-preview-inspection="${escapeHTML(inspection.id)}">Preview</button>
             <button class="button button-secondary button-small" type="button" data-edit-inspection="${escapeHTML(inspection.id)}">Edit</button>
             <button class="button button-secondary button-small" type="button" data-duplicate-inspection="${escapeHTML(inspection.id)}">Duplicate</button>
-            <button class="button inspection-button button-small" type="button" data-export-inspection="${escapeHTML(inspection.id)}">Send to Inspection Notes</button>
+            <button class="button inspection-button button-small" type="button" data-export-inspection="${escapeHTML(inspection.id)}">Export Word Report</button>
+            <button class="button button-secondary button-small" type="button" data-export-inspection-photos="${escapeHTML(inspection.id)}">Word + Photos ZIP</button>
             ${snapshot?.startLocation ? `<a class="button button-secondary button-small" href="${mapLink(snapshot.startLocation, "Trip Start")}" target="_blank" rel="noopener">Start Map</a>` : ""}
             ${snapshot?.endLocation ? `<a class="button button-secondary button-small" href="${mapLink(snapshot.endLocation, "Trip End")}" target="_blank" rel="noopener">End Map</a>` : ""}
             <button class="button button-danger-outline button-small" type="button" data-delete-inspection="${escapeHTML(inspection.id)}">Delete</button>
@@ -2443,22 +2645,50 @@
   }
 
   function renderOpenFollowUps(inspections, container) {
-    const rows = inspections.flatMap((inspection) => (
-      (inspection.followUps || [])
+    const rows = inspections.flatMap((inspection) => {
+      const followUps = (inspection.followUps || [])
         .filter((item) => item.status !== "Closed")
-        .map((item) => ({ inspection, item }))
-    )).sort((a, b) => String(a.item.dueDate || "9999-12-31").localeCompare(String(b.item.dueDate || "9999-12-31")));
+        .map((item) => ({ inspection, item, kind: "Follow-up" }));
+      const deficiencies = inspection.deficiencies
+        ? [{
+          inspection,
+          kind: "Deficiency",
+          item: { id: "", action: inspection.deficiencies, responsibleParty: "", dueDate: "", status: "Open" }
+        }]
+        : [];
+      const loadExceptions = inspectionLoads(inspection)
+        .filter((load) => load.deficiencyFollowUp)
+        .map((load) => ({
+          inspection,
+          kind: `Load ${load.identifier || "exception"}`,
+          item: { id: "", action: load.deficiencyFollowUp, responsibleParty: "", dueDate: "", status: "Open" }
+        }));
+      return [...followUps, ...deficiencies, ...loadExceptions];
+    }).sort((a, b) => {
+      const jobOrder = String(a.inspection.activeJobId || "Unassigned").localeCompare(String(b.inspection.activeJobId || "Unassigned"));
+      return jobOrder || String(a.item.dueDate || "9999-12-31").localeCompare(String(b.item.dueDate || "9999-12-31"));
+    });
 
     if (!rows.length) {
       container.innerHTML = `<div class="inspection-empty">No open follow-up actions match the current search.</div>`;
       return;
     }
 
-    container.innerHTML = rows.map(({ inspection, item }) => `
+    const groups = new Map();
+    rows.forEach((row) => {
+      const key = row.inspection.activeJobId || "Unassigned";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(row);
+    });
+
+    container.innerHTML = [...groups.entries()].map(([activeJobId, group]) => `
+      <section class="inspection-followup-group">
+        <div class="section-heading compact"><div><p class="eyebrow">Active Job</p><h3>${escapeHTML(activeJobId)}</h3></div><span class="pill inspection-pill-open">${group.length} OPEN</span></div>
+        ${group.map(({ inspection, item, kind }) => `
       <article class="inspection-record">
         <div class="inspection-record-heading">
           <div>
-            <p class="eyebrow">Open follow-up${item.dueDate ? ` • due ${escapeHTML(displayDate(item.dueDate))}` : ""}</p>
+            <p class="eyebrow">${escapeHTML(kind)}${item.dueDate ? ` • due ${escapeHTML(displayDate(item.dueDate))}` : " • no due date"}</p>
             <h3>${escapeHTML(item.action)}</h3>
             <p class="muted">${escapeHTML(inspection.vendor || "Facility")}${inspection.projectNumber ? ` • ${escapeHTML(inspection.projectNumber)}` : ""} • ${escapeHTML(displayDate(inspection.date))}</p>
           </div>
@@ -2470,9 +2700,11 @@
         </div>
         <div class="inspection-record-actions">
           <button class="button button-secondary button-small" type="button" data-edit-inspection="${escapeHTML(inspection.id)}">Open Inspection</button>
-          <button class="button inspection-button button-small" type="button" data-close-followup="${escapeHTML(inspection.id)}|${escapeHTML(item.id)}">Mark Closed</button>
+          ${item.id ? `<button class="button inspection-button button-small" type="button" data-close-followup="${escapeHTML(inspection.id)}|${escapeHTML(item.id)}">Mark Closed</button>` : ""}
         </div>
       </article>
+        `).join("")}
+      </section>
     `).join("");
   }
 
@@ -2584,7 +2816,7 @@
     const snapshot = inspection.tripSnapshot || {};
     const header = [
       "Date", "Active Job", "S&B Inspection Number", "Customer", "Reporting Vendor", "Inspection Location", "Project Name", "Project Number", "S&B Order / PO", "Equipment Tag", "ISO Drawing", "Vendor Job", "Piece / Spool", "Vendor Load #",
-      "Inspection Type", "Activity", "Status", "Acceptance / Release", "Start Time", "End Time",
+      "Inspection Type", "Activities Performed", "Activity", "Status", "Acceptance / Release", "Start Time", "End Time",
       "Hours On Site", "Odometer Miles", "GPS Miles", "STA Generated", "STA Filename", "Photo Count",
       "Quick Note", "Summary", "Generated Report Language", "Observations", "Deficiencies / Exceptions", "Open Follow-ups", "Closed Follow-ups",
       "Created", "Modified", "Vendor Load Details"
@@ -2593,7 +2825,7 @@
       displayDate(inspection.date), inspection.activeJobId, inspection.sbInspectionNo, inspection.customer,
       inspection.reportingVendor, inspection.inspectionLocation || inspection.vendor, inspection.projectName, inspection.projectNumber,
       inspection.purchaseOrderJob, inspection.equipmentTag, inspection.isoDrawingNumber, inspection.vendorJobNumber,
-      inspection.pieceSpoolNumber, loadIdentifiers(inspection).join(" | "), inspection.inspectionType, inspection.activity,
+      inspection.pieceSpoolNumber, loadIdentifiers(inspection).join(" | "), inspection.inspectionType, inspectionActivities(inspection).join(" | "), inspection.activity,
       inspection.status, inspection.acceptanceStatus, inspection.startTime, inspection.endTime,
       inspection.hoursOnSite, snapshot.miles ?? "", snapshot.gpsRouteMiles ?? "",
       snapshot.staGenerated ? "Yes" : "No", snapshot.staFileName || "", photoCount,
@@ -2850,11 +3082,26 @@
   function wordImageParagraph(photo, relationshipId, drawingId, mediaName, options = {}) {
     const maxWidth = Number(options.maxWidth) || 6.2;
     const maxHeight = Number(options.maxHeight) || 7.0;
-    const sourceWidth = Number(photo.width) || 1200;
-    const sourceHeight = Number(photo.height) || 900;
+    const rotated = ["left", "right"].includes(photo.reportRotation);
+    const sourceWidth = rotated ? (Number(photo.height) || 900) : (Number(photo.width) || 1200);
+    const sourceHeight = rotated ? (Number(photo.width) || 1200) : (Number(photo.height) || 900);
+    const rotation = photo.reportRotation === "right" ? 5400000 : (photo.reportRotation === "left" ? 16200000 : 0);
+    const fillFrame = Boolean(options.fillFrame);
     const scale = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight);
-    const width = Math.max(1, sourceWidth * scale);
-    const height = Math.max(1, sourceHeight * scale);
+    const width = fillFrame ? maxWidth : Math.max(1, sourceWidth * scale);
+    const height = fillFrame ? maxHeight : Math.max(1, sourceHeight * scale);
+    let crop = "";
+    if (fillFrame) {
+      const sourceAspect = sourceWidth / sourceHeight;
+      const frameAspect = maxWidth / maxHeight;
+      if (sourceAspect > frameAspect) {
+        const side = Math.round(((1 - frameAspect / sourceAspect) / 2) * 100000);
+        crop = `<a:srcRect l="${side}" r="${side}"/>`;
+      } else if (sourceAspect < frameAspect) {
+        const edge = Math.round(((1 - sourceAspect / frameAspect) / 2) * 100000);
+        crop = `<a:srcRect t="${edge}" b="${edge}"/>`;
+      }
+    }
     const cx = Math.round(width * 914400);
     const cy = Math.round(height * 914400);
     const description = xmlEscape(photo.caption || photo.name || `Inspection photo ${drawingId}`);
@@ -2869,8 +3116,8 @@
             <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
               <pic:pic>
                 <pic:nvPicPr><pic:cNvPr id="0" name="${xmlEscape(mediaName)}" descr="${description}"/><pic:cNvPicPr/></pic:nvPicPr>
-                <pic:blipFill><a:blip r:embed="${relationshipId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>
-                <pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>
+                <pic:blipFill><a:blip r:embed="${relationshipId}"/>${crop}<a:stretch><a:fillRect/></a:stretch></pic:blipFill>
+                <pic:spPr><a:xfrm${rotation ? ` rot="${rotation}"` : ""}><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>
               </pic:pic>
             </a:graphicData>
           </a:graphic>
@@ -3038,7 +3285,8 @@
       cell.ownerDocument,
       wordImageParagraph(photo, relationshipId, drawingId, mediaName, {
         maxWidth: 3.65,
-        maxHeight: 1.65
+        maxHeight: 2.25,
+        fillFrame: photo.reportLayout !== "fit"
       })
     );
     const caption = importWordFragment(
@@ -3159,39 +3407,14 @@
     setWordCellText(vendorTable, 7, 3, inspection.activity || "");
     setWordCellText(vendorTable, 8, 3, inspection.equipmentTag || "");
 
-    const followUps = Array.isArray(inspection.followUps) ? inspection.followUps : [];
-    const actionItems = followUps.map((item) => {
-      const owner = item.responsibleParty ? ` — ${item.responsibleParty}` : "";
-      const due = item.dueDate ? `, due ${displayDate(item.dueDate)}` : "";
-      return `${item.action || "Follow-up"}${owner}${due} (${item.status || "Open"})`;
-    }).join("\n");
-    const inspectionAudit = [
-      inspection.observations || "",
-      inspection.deficiencies ? `Deficiencies / Exceptions: ${inspection.deficiencies}` : "",
-      inspectionLoads(inspection).length ? `Vendor Loads:\n${loadDetailsText(inspection)}` : ""
-    ].filter(Boolean).join("\n");
-    setParagraphAfterLabel(documentXml, "DESCRIPTION:", reportLanguage);
-    setParagraphAfterLabel(documentXml, "ACTION ITEMS:", actionItems);
-    setParagraphAfterLabel(documentXml, "INSPECTION/AUDIT:", inspectionAudit);
-    setLabeledParagraphValue(
-      documentXml,
-      "Shop Inspection:",
-      [inspection.activity, reportLanguage].filter(Boolean).join(" — ")
-    );
-    if (/NDE/i.test(inspection.inspectionType || "") || /NDE/i.test(inspection.activity || "")) {
-      setLabeledParagraphValue(documentXml, "NDE Review:", inspection.observations || inspection.summary || "Performed");
-    }
-    if (/COAT/i.test(inspection.inspectionType || "") || /COAT/i.test(inspection.activity || "")) {
-      setLabeledParagraphValue(documentXml, "Coating Inspection:", reportLanguage || inspection.observations || "Performed");
-    }
-    setLabeledParagraphValue(
-      documentXml,
-      "Inspection Release:",
-      [
-        inspection.acceptanceStatus || "",
-        inspection.deficiencies ? `Exceptions: ${inspection.deficiencies}` : ""
-      ].filter(Boolean).join(" — ")
-    );
+    const sections = reportSectionText(inspection);
+    setParagraphAfterLabel(documentXml, "DESCRIPTION:", sections.description || reportLanguage);
+    setParagraphAfterLabel(documentXml, "ACTION ITEMS:", sections.actionItems);
+    setParagraphAfterLabel(documentXml, "INSPECTION/AUDIT:", sections.inspectionAudit);
+    setLabeledParagraphValue(documentXml, "Shop Inspection:", sections.shopInspection);
+    setLabeledParagraphValue(documentXml, "NDE Review:", sections.ndeReview);
+    setLabeledParagraphValue(documentXml, "Coating Inspection:", sections.coatingInspection);
+    setLabeledParagraphValue(documentXml, "Inspection Release:", sections.inspectionRelease);
 
     const relationshipRoot = relationshipsXml.documentElement;
     let relationshipNumber = nextRelationshipId(relationshipsXml);
@@ -3260,7 +3483,8 @@
       ["S&B Order / PO", inspection.purchaseOrderJob || "Not entered", "Equipment Tag", inspection.equipmentTag || "Not entered"],
       ["ISO Drawing", inspection.isoDrawingNumber || "Not entered", "Vendor Job", inspection.vendorJobNumber || "Not entered"],
       ["Vendor Loads", loadIdentifiers(inspection).join(" | ") || "Not entered", "Load Count", String(inspectionLoads(inspection).length)],
-      ["Inspection Type", inspection.inspectionType || "Inspection", "Activity", inspection.activity || "Not entered"],
+      ["Inspection Type", inspection.inspectionType || "Inspection", "Activities", inspectionActivities(inspection).join(" | ") || "Not entered"],
+      ["Work Summary", inspection.activity || "Not entered", "Status", inspection.status || "Draft"],
       ["Status", inspection.status || "Not entered", "Acceptance / Release", inspection.acceptanceStatus || "Not Determined"],
       ["Start Time", inspection.startTime || "Not entered", "End Time", inspection.endTime || "Not entered"],
       ["Hours On Site", inspection.hoursOnSite || "Not entered", "Attached Photos", String(photos.length)],
@@ -3401,174 +3625,6 @@
     return new Uint8Array(window.fflate.zipSync(entries, { level: 6 }));
   }
 
-  function pdfSafeText(value) {
-    return String(value ?? "")
-      .normalize("NFKD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[\u2018\u2019]/g, "'")
-      .replace(/[\u201c\u201d]/g, "\"")
-      .replace(/[\u2013\u2014]/g, "-")
-      .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, "");
-  }
-
-  function wrapPdfText(text, font, size, maxWidth) {
-    const lines = [];
-    const paragraphs = pdfSafeText(text || "").split(/\r?\n/);
-    for (const paragraph of paragraphs) {
-      if (!paragraph.trim()) {
-        lines.push("");
-        continue;
-      }
-      const words = paragraph.split(/\s+/);
-      let line = "";
-      for (const word of words) {
-        const candidate = line ? `${line} ${word}` : word;
-        if (font.widthOfTextAtSize(candidate, size) <= maxWidth || !line) {
-          line = candidate;
-        } else {
-          lines.push(line);
-          line = word;
-        }
-      }
-      if (line) lines.push(line);
-    }
-    return lines;
-  }
-
-  async function buildInspectionPdf(inspection, photos) {
-    if (!window.PDFLib?.PDFDocument) throw new Error("The PDF component is unavailable.");
-    const { PDFDocument, StandardFonts, rgb } = window.PDFLib;
-    const document = await PDFDocument.create();
-    const regular = await document.embedFont(StandardFonts.Helvetica);
-    const bold = await document.embedFont(StandardFonts.HelveticaBold);
-    const pageSize = [612, 792];
-    const margin = 44;
-    const contentWidth = pageSize[0] - margin * 2;
-    let page;
-    let y;
-
-    const addPage = () => {
-      page = document.addPage(pageSize);
-      y = pageSize[1] - margin;
-      page.drawText("Mileage Logger Inspection Record", {
-        x: margin,
-        y,
-        size: 9,
-        font: bold,
-        color: rgb(0.22, 0.35, 0.48)
-      });
-      y -= 22;
-    };
-    const ensureSpace = (height) => {
-      if (y - height < margin) addPage();
-    };
-    const drawWrapped = (text, options = {}) => {
-      const font = options.bold ? bold : regular;
-      const size = options.size || 10;
-      const lineHeight = options.lineHeight || size * 1.35;
-      const lines = wrapPdfText(text || "", font, size, options.width || contentWidth);
-      for (const line of lines) {
-        ensureSpace(lineHeight);
-        page.drawText(line || " ", {
-          x: options.x || margin,
-          y,
-          size,
-          font,
-          color: options.color || rgb(0.08, 0.12, 0.18)
-        });
-        y -= lineHeight;
-      }
-    };
-    const drawField = (label, value) => {
-      drawWrapped(`${label}: ${value || "Not entered"}`, { size: 10 });
-    };
-    const drawSection = (title, text) => {
-      ensureSpace(55);
-      y -= 8;
-      drawWrapped(title.toUpperCase(), { bold: true, size: 11, color: rgb(0.06, 0.35, 0.50) });
-      drawWrapped(text || "None entered.", { size: 10 });
-    };
-
-    addPage();
-    drawWrapped("INSPECTION REPORT", { bold: true, size: 20, lineHeight: 25, color: rgb(0.04, 0.24, 0.36) });
-    y -= 5;
-    drawField("Date", displayDate(inspection.date));
-    drawField("Active Job", inspection.activeJobId || "Unassigned");
-    drawField("Customer", inspection.customer);
-    drawField("Reporting Vendor", inspection.reportingVendor || inspection.vendor);
-    drawField("Inspection Location", inspection.inspectionLocation || inspection.vendor);
-    drawField("S&B Inspection #", inspection.sbInspectionNo || inspection.projectNumber);
-    drawField("S&B Order / PO", inspection.purchaseOrderJob);
-    drawField("Equipment Tag", inspection.equipmentTag);
-    drawField("ISO Drawing", inspection.isoDrawingNumber);
-    drawField("Vendor Job", inspection.vendorJobNumber);
-    drawField("Vendor Loads", loadIdentifiers(inspection).join(" | "));
-    drawField("Inspection Type", inspection.inspectionType);
-    drawField("Activity", inspection.activity);
-    drawField("Status", inspection.status);
-    drawField("Acceptance / Release", inspection.acceptanceStatus);
-    drawField("Time", `${inspection.startTime || "Not entered"} - ${inspection.endTime || "Not entered"}`);
-    drawField("Hours On Site", inspection.hoursOnSite);
-
-    const snapshot = inspection.tripSnapshot || {};
-    drawField("Mileage", snapshot.miles === undefined || snapshot.miles === null ? "Standalone inspection" : `${Number(snapshot.miles).toFixed(1)} miles`);
-    drawField("GPS Route Miles", snapshot.gpsRouteMiles === undefined || snapshot.gpsRouteMiles === null ? "Not recorded" : Number(snapshot.gpsRouteMiles).toFixed(1));
-    drawField("STA Generated", snapshot.staGenerated ? "Yes" : "No");
-    drawField("Attached Photos", String(photos.length));
-
-    drawSection("Summary", inspection.summary);
-    if (inspection.generatedReportLanguage) drawSection("Generated Draft Report Language", inspection.generatedReportLanguage);
-    if (inspection.quickNote) drawSection("Quick Note", inspection.quickNote);
-    drawSection("Observations", inspection.observations);
-    if (inspectionLoads(inspection).length) drawSection("Vendor Loads", loadDetailsText(inspection));
-    drawSection("Deficiencies / Exceptions", inspection.deficiencies || "None entered.");
-    drawSection("Open Follow-ups", inspectionFollowUpText(inspection, "Open") || "None.");
-    drawSection("Closed Follow-ups", inspectionFollowUpText(inspection, "Closed") || "None.");
-
-    for (let index = 0; index < photos.length; index += 1) {
-      const photo = photos[index];
-      addPage();
-      drawWrapped(`PHOTO ${index + 1} OF ${photos.length}`, { bold: true, size: 14, lineHeight: 20 });
-      drawWrapped(photo.caption || photo.name || "Inspection photo", { size: 10 });
-      y -= 8;
-      try {
-        const bytes = new Uint8Array(await photo.blob.arrayBuffer());
-        const embedded = String(photo.type || photo.blob.type || "").toLowerCase() === "image/png"
-          ? await document.embedPng(bytes)
-          : await document.embedJpg(bytes);
-        const availableHeight = Math.max(120, y - margin - 30);
-        const scale = Math.min(contentWidth / embedded.width, availableHeight / embedded.height, 1);
-        const width = embedded.width * scale;
-        const height = embedded.height * scale;
-        page.drawImage(embedded, {
-          x: margin + (contentWidth - width) / 2,
-          y: y - height,
-          width,
-          height
-        });
-        y -= height + 18;
-        drawWrapped(`File: ${photo.packagePath}`, { size: 8, color: rgb(0.35, 0.38, 0.42) });
-      } catch (error) {
-        drawWrapped("This photo is included in the Photos folder but could not be embedded in the PDF.", {
-          size: 10,
-          color: rgb(0.65, 0.18, 0.12)
-        });
-      }
-    }
-
-    const pages = document.getPages();
-    pages.forEach((currentPage, index) => {
-      currentPage.drawText(`Page ${index + 1} of ${pages.length}`, {
-        x: pageSize[0] - margin - 70,
-        y: 22,
-        size: 8,
-        font: regular,
-        color: rgb(0.4, 0.42, 0.45)
-      });
-    });
-    return new Uint8Array(await document.save());
-  }
-
   async function loadPackagePhotos(inspection) {
     if (!window.MileageMediaStore) return [];
     const stored = await window.MileageMediaStore.getAllPhotos();
@@ -3591,7 +3647,8 @@
   }
 
   async function deliverInspectionPackage(filename, blob) {
-    const file = new File([blob], filename, { type: "application/zip" });
+    const file = new File([blob], filename, { type: blob.type || "application/octet-stream" });
+    const isWord = /\.docx$/i.test(filename);
     const touchDevice = navigator.maxTouchPoints > 0 || window.matchMedia?.("(pointer: coarse)")?.matches;
     const forceDownload = new URLSearchParams(window.location.search).get("download") === "1";
     if (!forceDownload && touchDevice && navigator.share && navigator.canShare?.({ files: [file] })) {
@@ -3599,11 +3656,11 @@
         // Share only the file. On iOS, including a text message alongside a ZIP
         // can cause Save to Files to save the message as a .txt file instead.
         await navigator.share({ files: [file] });
-        showInspectionToast("Handoff ready. Save it in OneDrive > Inspection Handoffs.");
+        showInspectionToast(isWord ? "Word report ready to save or share." : "Word + Photos ZIP ready to save or share.");
         return true;
       } catch (error) {
         if (error?.name === "AbortError") {
-          showInspectionToast("Inspection package was not saved.");
+          showInspectionToast(isWord ? "Word report was not saved." : "Inspection export was not saved.");
           return false;
         }
         console.warn("Inspection package share failed; using download instead:", error);
@@ -3618,7 +3675,7 @@
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1500);
-    showInspectionToast("Handoff downloaded. Move it to OneDrive > Inspection Handoffs.");
+    showInspectionToast(isWord ? "Word report downloaded." : "Word + Photos ZIP downloaded.");
     return true;
   }
 
@@ -3635,7 +3692,7 @@
     refreshFromState(true);
   }
 
-  async function buildInspectionPackageEntries(inspection, folder = "") {
+  async function buildInspectionWordReport(inspection) {
     const photos = await loadPackagePhotos(inspection);
     const baseName = packageBaseName(inspection);
     const editableReportFilename = `${baseName}_Editable_Report.docx`;
@@ -3650,42 +3707,61 @@
         editableReportFilename
       )
       : await buildInspectionDocx(inspection, photos);
+    return { baseName, filename: editableReportFilename, bytes: docx, photos };
+  }
+
+  async function buildInspectionPackageEntries(inspection, folder = "") {
+    const report = await buildInspectionWordReport(inspection);
     const prefix = folder ? `${folder}/` : "";
-    const entries = {
-      [`${prefix}00_READ_ME_FIRST.txt`]: window.fflate.strToU8(buildHandoffReadme(inspection, baseName)),
-      [`${prefix}${baseName}_Handoff.json`]: window.fflate.strToU8(buildInspectionHandoffJson(inspection, photos)),
-      [`${prefix}${baseName}_Report.pdf`]: await buildInspectionPdf(inspection, photos),
-      [`${prefix}${editableReportFilename}`]: docx,
-      [`${prefix}${baseName}_Update.txt`]: window.fflate.strToU8(buildInspectionUpdate(inspection, photos.length)),
-      [`${prefix}${baseName}_Data.csv`]: window.fflate.strToU8(buildInspectionDataCsv(inspection, photos.length)),
-      [`${prefix}${baseName}_Photo_Index.html`]: window.fflate.strToU8(buildPhotoIndexHtml(inspection, photos)),
-      [`${prefix}${baseName}_Photo_Text.txt`]: window.fflate.strToU8(buildPhotoTextFile(inspection, photos))
-    };
-    for (const photo of photos) {
+    const entries = { [`${prefix}${report.filename}`]: report.bytes };
+    for (const photo of report.photos) {
       entries[`${prefix}${photo.packagePath}`] = new Uint8Array(await photo.blob.arrayBuffer());
     }
-    return { baseName, entries };
+    return { baseName: report.baseName, entries };
   }
 
   async function exportInspectionPackage(inspection, button) {
+    const originalText = button?.textContent || "Export Word Report";
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Building Word Report...";
+    }
+    try {
+      const report = await buildInspectionWordReport(inspection);
+      const delivered = await deliverInspectionPackage(
+        report.filename,
+        new Blob([report.bytes], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" })
+      );
+      if (delivered) recordInspectionExports([inspection.id]);
+    } catch (error) {
+      console.error("Inspection Word export failed:", error);
+      window.alert(`The Word report could not be created.\n\n${error.message}`);
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = originalText;
+      }
+    }
+  }
+
+  async function exportInspectionWithPhotos(inspection, button) {
     if (!window.fflate) {
       window.alert("The ZIP component is unavailable. Reopen the app while online and try again.");
       return;
     }
-    const originalText = button?.textContent || "Send to Inspection Notes";
+    const originalText = button?.textContent || "Word + Photos ZIP";
     if (button) {
       button.disabled = true;
-      button.textContent = "Building Package...";
+      button.textContent = "Building ZIP...";
     }
     try {
       const { baseName, entries } = await buildInspectionPackageEntries(inspection);
       const bytes = window.fflate.zipSync(entries, { level: 6 });
-      const filename = `${baseName}_Inspection_Handoff.zip`;
-      const delivered = await deliverInspectionPackage(filename, new Blob([bytes], { type: "application/zip" }));
+      const delivered = await deliverInspectionPackage(`${baseName}_Word_and_Photos.zip`, new Blob([bytes], { type: "application/zip" }));
       if (delivered) recordInspectionExports([inspection.id]);
     } catch (error) {
-      console.error("Inspection package export failed:", error);
-      window.alert(`The inspection package could not be created.\n\n${error.message}`);
+      console.error("Inspection Word + Photos export failed:", error);
+      window.alert(`The Word + Photos ZIP could not be created.\n\n${error.message}`);
     } finally {
       if (button) {
         button.disabled = false;
@@ -3713,18 +3789,18 @@
     try {
       const entries = {
         ["00_READ_ME_FIRST.txt"]: window.fflate.strToU8(
-        `SELECTED INSPECTION HANDOFFS\r\n\r\nThis ZIP contains ${inspections.length} selected inspection package${inspections.length === 1 ? "" : "s"}, one per folder, including its currently attached photos.\r\nThis is a handoff/export file. Keep using Save Full Data Backup for restorable app records; retain original images in iPhone Photos.\r\n`
+        `SELECTED INSPECTION WORD REPORTS\r\n\r\nThis ZIP contains ${inspections.length} editable Word report${inspections.length === 1 ? "" : "s"}. Each report embeds its inspection photos once; separate image files and PDFs are not included.\r\n`
         )
       };
       for (let index = 0; index < inspections.length; index += 1) {
         if (button) button.textContent = `Building ${index + 1} of ${inspections.length}...`;
         const inspection = inspections[index];
         const folder = `${String(index + 1).padStart(2, "0")}_${packageBaseName(inspection)}`;
-        const packageData = await buildInspectionPackageEntries(inspection, folder);
-        Object.assign(entries, packageData.entries);
+        const report = await buildInspectionWordReport(inspection);
+        entries[`${folder}/${report.filename}`] = report.bytes;
       }
       const bytes = window.fflate.zipSync(entries, { level: 6 });
-      const filename = `Selected_Inspection_Handoffs_${new Date().toISOString().slice(0, 10)}_${inspections.length}_records.zip`;
+      const filename = `Selected_Inspection_Word_Reports_${new Date().toISOString().slice(0, 10)}_${inspections.length}_records.zip`;
       const delivered = await deliverInspectionPackage(filename, new Blob([bytes], { type: "application/zip" }));
       if (delivered) recordInspectionExports(inspections.map((inspection) => inspection.id));
     } catch (error) {
@@ -3748,7 +3824,7 @@
 
     const header = [
       "Date", "Active Job", "S&B Inspection Number", "Customer", "Reporting Vendor", "Inspection Location", "Project Name", "Project Number", "S&B Order / PO", "Equipment Tag", "ISO Drawing", "Vendor Job", "Piece / Spool", "Vendor Load #",
-      "Inspection Type", "Activity", "Status", "Acceptance / Release", "Start Time", "End Time",
+      "Inspection Type", "Activities Performed", "Activity", "Status", "Acceptance / Release", "Start Time", "End Time",
       "Hours On Site", "Linked Trip", "Odometer Miles", "GPS Miles", "STA Generated", "STA Filename",
       "Quick Note", "Summary", "Generated Report Language", "Observations", "Deficiencies / Exceptions", "Open Follow-ups", "Closed Follow-ups",
       "Created", "Modified", "Vendor Load Details"
@@ -3765,7 +3841,7 @@
         displayDate(inspection.date), inspection.activeJobId, inspection.sbInspectionNo, inspection.customer,
         inspection.reportingVendor, inspection.inspectionLocation || inspection.vendor, inspection.projectName, inspection.projectNumber,
         inspection.purchaseOrderJob, inspection.equipmentTag, inspection.isoDrawingNumber, inspection.vendorJobNumber,
-        inspection.pieceSpoolNumber, loadIdentifiers(inspection).join(" | "), inspection.inspectionType, inspection.activity,
+        inspection.pieceSpoolNumber, loadIdentifiers(inspection).join(" | "), inspection.inspectionType, inspectionActivities(inspection).join(" | "), inspection.activity,
         inspection.status, inspection.acceptanceStatus, inspection.startTime, inspection.endTime,
         inspection.hoursOnSite, inspection.tripId ? "Yes" : "No", snapshot.miles ?? "",
         snapshot.gpsRouteMiles ?? "", snapshot.staGenerated ? "Yes" : "No", snapshot.staFileName || "",
@@ -3911,6 +3987,14 @@
       const activeJobButton = event.target.closest("[data-work-active-job]");
       if (activeJobButton) {
         switchActiveJob(activeJobButton.dataset.workActiveJob);
+        return;
+      }
+
+      const newWorkspaceInspectionButton = event.target.closest("[data-new-workspace-inspection]");
+      if (newWorkspaceInspectionButton) {
+        if ($("inspectionForm")) saveInspectionDraft({ silent: true });
+        const tripId = $("activeJobsVisit")?.value || "";
+        openInspectionForm(null, tripId, { activeJobId: newWorkspaceInspectionButton.dataset.newWorkspaceInspection });
         return;
       }
 
@@ -4124,6 +4208,14 @@
         return;
       }
 
+      const exportPhotosButton = event.target.closest("[data-export-inspection-photos]");
+      if (exportPhotosButton) {
+        const state = readState();
+        const inspection = state.settings.inspections.find((item) => item.id === exportPhotosButton.dataset.exportInspectionPhotos);
+        if (inspection) await exportInspectionWithPhotos(inspection, exportPhotosButton);
+        return;
+      }
+
       const deleteButton = event.target.closest("[data-delete-inspection]");
       if (deleteButton) {
         const state = readState();
@@ -4237,6 +4329,9 @@
         if ($("inspectionActivity")?.value === "Inspection" || !$("inspectionActivity")?.value.trim()) {
           $("inspectionActivity").value = event.target.value;
         }
+      }
+      if (event.target.matches?.("[data-inspection-activity]")) {
+        updateInspectionWorkflowSections();
       }
       if (event.target.id === "coatingSystem") updateCoatingRequirementSummary();
       if (event.target.id === "inspectionDeficiencyStatus") {

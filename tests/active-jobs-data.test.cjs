@@ -9,22 +9,24 @@ vm.runInNewContext(source, context, { filename: "active-jobs-data.js" });
 
 const data = context.window.MileageActiveJobsData;
 assert.ok(data, "Active Jobs data module should load");
-assert.equal(data.activeJobs.length, 15, "The current Active Jobs Master rows should remain present");
+assert.ok(Array.isArray(data.activeJobs), "The Active Jobs catalog should be available");
 
-const conflicts = data.reportingUnitConflicts();
+const syntheticJobs = [
+  { aj: "AJ-901", inspectionNo: "TEST-INSP-001", reportingVendor: "Example Fabricator", vendorJobs: "TEST-SHOP-01" },
+  { aj: "AJ-902", inspectionNo: "TEST-INSP-001", reportingVendor: "Example Fabricator", vendorJobs: "TEST-SHOP-02" }
+];
+const conflicts = data.reportingUnitConflicts(syntheticJobs);
 assert.ok(
-  conflicts.some((group) => group.map((job) => job.aj).join("|") === "AJ-002|AJ-003"),
-  "The Smith Tank E10379-410 conflict should remain a review flag"
+  conflicts.some((group) => group.map((job) => job.aj).join("|") === "AJ-901|AJ-902"),
+  "A synthetic duplicate reporting unit should remain a review flag"
 );
-assert.equal(data.activeJobs.find((job) => job.aj === "AJ-002").vendorJobs, "26-6936");
-assert.equal(data.activeJobs.find((job) => job.aj === "AJ-003").vendorJobs, "26-6937");
 
 const trips = [{
   id: "trip-shared",
   date: "08/11/2026",
-  vendor: "Smith Tank",
-  customer: "Shell",
-  projectNumber: "E10379-410",
+  vendor: "Example Fabricator",
+  customer: "Example Client",
+  projectNumber: "TEST-INSP-001",
   purpose: "Inspection",
   notes: "Shared visit",
   miles: 42.5
@@ -33,25 +35,25 @@ const inspections = [
   {
     id: "inspection-2",
     tripId: "trip-shared",
-    activeJobId: "AJ-002",
-    sbInspectionNo: "E10379-410",
-    reportingVendor: "Smith Tank",
-    inspectionLocation: "Smith Tank",
-    customer: "Shell",
-    projectName: "T-F0501-1 Tank Renewal",
-    vendorJobNumber: "26-6936",
+    activeJobId: "AJ-901",
+    sbInspectionNo: "TEST-INSP-001",
+    reportingVendor: "Example Fabricator",
+    inspectionLocation: "Example Shop",
+    customer: "Example Client",
+    projectName: "Synthetic Project Alpha",
+    vendorJobNumber: "TEST-SHOP-01",
     activity: "Fit-up Inspection"
   },
   {
     id: "inspection-3",
     tripId: "trip-shared",
-    activeJobId: "AJ-003",
-    sbInspectionNo: "E10379-410",
-    reportingVendor: "Smith Tank",
-    inspectionLocation: "Smith Tank",
-    customer: "Shell",
-    projectName: "T-F0498 Tank Renewal",
-    vendorJobNumber: "26-6937",
+    activeJobId: "AJ-902",
+    sbInspectionNo: "TEST-INSP-001",
+    reportingVendor: "Example Fabricator",
+    inspectionLocation: "Example Shop",
+    customer: "Example Client",
+    projectName: "Synthetic Project Beta",
+    vendorJobNumber: "TEST-SHOP-02",
     activity: "Document Review"
   }
 ];
@@ -59,13 +61,13 @@ const inspections = [
 const csv = data.makeActivityCSV(trips, inspections);
 const rows = csv.replace(/^\uFEFF/, "").split("\r\n");
 assert.equal(rows.length, 2, "A shared mileage trip should produce one activity row");
-assert.match(rows[1], /AJ-002/);
-assert.match(rows[1], /AJ-003/);
+assert.match(rows[1], /AJ-901/);
+assert.match(rows[1], /AJ-902/);
 assert.equal((csv.match(/42\.5/g) || []).length, 1, "Shared mileage must appear exactly once");
 
 const indexHtml = fs.readFileSync(path.join(__dirname, "..", "index.html"), "utf8");
 assert.match(indexHtml, /active-jobs-data\.js\?v=visit-workspace-5/);
-assert.match(indexHtml, /active-jobs-management\.js\?v=active-jobs-open-status-hotfix-1/);
+assert.match(indexHtml, /active-jobs-management\.js\?v=full-upgrade-list-1/);
 const serviceWorker = fs.readFileSync(path.join(__dirname, "..", "service-worker.js"), "utf8");
 for (const match of serviceWorker.matchAll(/"\.\/([^"?]+)(?:\?[^"\s]+)?"/g)) {
   const asset = match[1];

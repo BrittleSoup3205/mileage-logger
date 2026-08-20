@@ -1,10 +1,21 @@
 (() => {
   "use strict";
 
-  const WORKFLOW_SCHEMA_VERSION = 1;
+  const WORKFLOW_SCHEMA_VERSION = 2;
   const REIMBURSEMENT_STATUSES = ["Not Submitted", "Submitted", "Reimbursed"];
   const TIMESHEET_STATUSES = ["Not Entered", "Entered", "Submitted", "Approved"];
   const LOAD_STATUSES = ["Not Recorded", "Accepted", "Accepted with Follow-up", "Released", "Hold", "Rejected"];
+  const INSPECTION_ACTIVITIES = [
+    "Hydro / Pressure Test",
+    "Visual / Final Inspection",
+    "Dimensional Inspection",
+    "Coating Inspection",
+    "NDE Review",
+    "Material / MTR / PMI Review",
+    "Documentation Review",
+    "Inspection Release",
+    "Structural Steel Inspection"
+  ];
 
   function text(value) {
     return String(value ?? "");
@@ -80,12 +91,34 @@
     })];
   }
 
+  function inspectionActivities(inspection) {
+    const record = inspection && typeof inspection === "object" ? inspection : {};
+    const supplied = Array.isArray(record.activities) ? unique(record.activities) : [];
+    if (supplied.length) return supplied;
+    const legacy = text(record.inspectionType).trim();
+    if (!legacy || legacy === "Inspection" || legacy === "Other") return [];
+    const mappings = [
+      [/hydro|pressure/i, "Hydro / Pressure Test"],
+      [/final|visual/i, "Visual / Final Inspection"],
+      [/dimension/i, "Dimensional Inspection"],
+      [/coat/i, "Coating Inspection"],
+      [/nde/i, "NDE Review"],
+      [/material|mtr|pmi/i, "Material / MTR / PMI Review"],
+      [/document/i, "Documentation Review"],
+      [/release/i, "Inspection Release"],
+      [/structural|steel/i, "Structural Steel Inspection"]
+    ];
+    const mapped = mappings.find(([pattern]) => pattern.test(legacy));
+    return mapped ? [mapped[1]] : [];
+  }
+
   function migrateInspection(inspection) {
     const record = inspection && typeof inspection === "object" ? inspection : {};
     const loads = inspectionLoads(record);
     return {
       ...record,
-      schemaVersion: Math.max(4, Number(record.schemaVersion || 0)),
+      schemaVersion: Math.max(5, Number(record.schemaVersion || 0)),
+      activities: inspectionActivities(record),
       loads,
       // Retain the legacy field as an alias for older exports and backups.
       vendorLoadNumber: text(record.vendorLoadNumber).trim() || (loads[0]?.identifier || "")
@@ -330,7 +363,16 @@
       const incomplete = (index < 5 && dayEntries.length === 0) || dayEntries.some((entry) => (
         !Number.isFinite(Number(entry.hours)) || Number(entry.hours) <= 0 || entry.status === "Not Entered"
       ));
-      return { date, entries: dayEntries, total, incomplete };
+      const incompleteReasons = [];
+      if (index < 5 && dayEntries.length === 0) incompleteReasons.push("No hours entered");
+      dayEntries.forEach((entry) => {
+        if (!Number.isFinite(Number(entry.hours)) || Number(entry.hours) <= 0) {
+          incompleteReasons.push(`${entry.activity || entry.vendorLocation || "Work entry"} needs confirmed hours`);
+        } else if (entry.status === "Not Entered") {
+          incompleteReasons.push(`${entry.activity || entry.vendorLocation || "Work entry"} status is not confirmed`);
+        }
+      });
+      return { date, entries: dayEntries, total, incomplete, incompleteReasons: unique(incompleteReasons) };
     });
     return {
       weekStart: dates[0],
@@ -339,6 +381,7 @@
       entries,
       total: days.reduce((sum, day) => sum + day.total, 0),
       incompleteDays: days.filter((day) => day.incomplete).map((day) => day.date),
+      incompleteDetails: days.filter((day) => day.incomplete).map((day) => ({ date: day.date, reasons: day.incompleteReasons })),
       weekStatus: state.workflow.timesheetWeeks[dates[0]] || { status: "Not Entered", submittedISO: "", approvedISO: "" }
     };
   }
@@ -380,9 +423,11 @@
     REIMBURSEMENT_STATUSES,
     TIMESHEET_STATUSES,
     LOAD_STATUSES,
+    INSPECTION_ACTIVITIES,
     defaultWorkflowState,
     normalizeLoad,
     inspectionLoads,
+    inspectionActivities,
     migrateInspection,
     normalizeReimbursement,
     migrateTrip,
