@@ -95,8 +95,8 @@
     const record = inspection && typeof inspection === "object" ? inspection : {};
     const supplied = Array.isArray(record.activities) ? unique(record.activities) : [];
     if (supplied.length) return supplied;
-    const legacy = text(record.inspectionType).trim();
-    if (!legacy || legacy === "Inspection" || legacy === "Other") return [];
+    const legacy = unique([record.inspectionType, record.activity]).join(" | ");
+    if (!legacy || /^(?:Inspection|Other)(?: \| (?:Inspection|Other))?$/i.test(legacy)) return [];
     const mappings = [
       [/hydro|pressure/i, "Hydro / Pressure Test"],
       [/final|visual/i, "Visual / Final Inspection"],
@@ -108,8 +108,7 @@
       [/release/i, "Inspection Release"],
       [/structural|steel/i, "Structural Steel Inspection"]
     ];
-    const mapped = mappings.find(([pattern]) => pattern.test(legacy));
-    return mapped ? [mapped[1]] : [];
+    return mappings.filter(([pattern]) => pattern.test(legacy)).map(([, activity]) => activity);
   }
 
   function migrateInspection(inspection) {

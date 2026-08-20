@@ -143,7 +143,41 @@ assert.match(source, /index < 4[^]*?setEmptyPhotoCell[^]*?clearPhotoCell/, "Extr
 assert.match(source, /createElementNS\(WORD_NS, "w:cantSplit"\)/, "Photo rows must stay together across page breaks");
 assert.doesNotMatch(source, /const supportedPhotos =[^]*?\.slice\(0, 4\)/, "Word export must not cap photos at four");
 
+const mixedNdeSections = api.reportSectionText({
+  ...inspection,
+  activities: ["NDE Review", "Dimensional Inspection"],
+  activity: "Dimensional inspection and general documentation review",
+  observations: "General dimensional observations remain in the inspection audit section."
+});
+assert.match(mixedNdeSections.inspectionAudit, /General dimensional observations/,
+  "Selecting NDE alongside other work must not steal unrelated general observations");
+assert.doesNotMatch(mixedNdeSections.ndeReview, /General dimensional observations/,
+  "The NDE section must not claim mixed-activity general observations");
+
+const sectionDeficiency = "Synthetic section exception requires repair.";
+const deficiencySections = api.reportSectionText({
+  ...inspection,
+  summary: "",
+  deficiencies: sectionDeficiency,
+  generatedReportLanguage: `Inspection completed. A deficiency or exception was recorded: ${sectionDeficiency}`
+});
+assert.equal((Object.values(deficiencySections).join("\n").match(/Synthetic section exception requires repair\./g) || []).length, 1,
+  "Template-routed Word sections must contain a deficiency or exception exactly once");
+
 (async () => {
+  const repeatedDeficiency = "Synthetic flange exception requires repair.";
+  const deficiencyBytes = await api.buildInspectionDocx({
+    ...inspection,
+    summary: `Summary entered. ${repeatedDeficiency}`,
+    quickNote: `Quick note entered. ${repeatedDeficiency}`,
+    observations: `General observations entered. ${repeatedDeficiency}`,
+    deficiencies: repeatedDeficiency,
+    generatedReportLanguage: `Inspection completed. A deficiency or exception was recorded: ${repeatedDeficiency}`
+  }, []);
+  const deficiencyXml = fflate.strFromU8(fflate.unzipSync(deficiencyBytes)["word/document.xml"]);
+  assert.equal((deficiencyXml.match(/Synthetic flange exception requires repair\./g) || []).length, 1,
+    "A deficiency or exception must appear exactly once in the Word report");
+
   for (const count of [0, 1, 4, 5, 8, 13, 25, 50]) {
     const photos = Array.from({ length: count }, (_, index) => photo(index + 1));
     const bytes = await api.buildInspectionDocx(inspection, photos);

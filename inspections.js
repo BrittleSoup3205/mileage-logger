@@ -1837,6 +1837,18 @@
     }).join(" ");
   }
 
+  function reportTextWithoutDeficiency(value, deficiencies) {
+    const narrative = cleanReportText(value);
+    const detail = cleanReportText(deficiencies);
+    if (!narrative || !detail) return narrative;
+    const normalize = (text) => String(text || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+    const detailKeys = detail.split(/(?<=[.!?])\s+/).map(normalize).filter(Boolean);
+    return narrative.split(/(?<=[.!?])\s+/).filter((sentence) => {
+      const sentenceKey = normalize(sentence);
+      return !detailKeys.some((detailKey) => sentenceKey.includes(detailKey));
+    }).join(" ");
+  }
+
   function generateReportLanguage(inspection) {
     const sentences = [];
     const location = inspection.inspectionLocation || inspection.vendor || "the documented inspection location";
@@ -1879,11 +1891,6 @@
       if (steel.galvanizing === "Satisfactory") sentences.push("Post-galvanizing condition was visually reviewed and found satisfactory.");
     }
 
-    if (inspection.deficiencyStatus === "Issue noted" && inspection.deficiencies) {
-      sentences.push(`A deficiency or exception was recorded: ${inspection.deficiencies}`);
-    } else if (inspection.deficiencyStatus === "None") {
-      sentences.push("No deficiencies or exceptions were entered for the documented inspection activities.");
-    }
     if (inspection.acceptanceStatus && inspection.acceptanceStatus !== "Not Determined") {
       sentences.push(`Inspection disposition: ${inspection.acceptanceStatus}.`);
     }
@@ -1911,13 +1918,16 @@
     const activities = inspectionActivities(inspection);
     const generalActivities = activities.filter((activity) => !/coat|nde|release/i.test(activity));
     const ndeSelected = hasInspectionActivity(inspection, /nde/i);
+    const deficiency = cleanReportText(inspection.deficiencies);
+    const observations = reportTextWithoutDeficiency(inspection.observations, deficiency);
+    const ndeOnly = ndeSelected && activities.length > 0 && activities.every((activity) => /nde/i.test(activity));
     const loadText = inspectionLoads(inspection).length ? `Vendor Loads:\n${loadDetailsText(inspection)}` : "";
     return {
-      description: cleanReportText(inspection.summary || inspection.generatedReportLanguage || generateReportLanguage(inspection)),
-      actionItems: inspectionFollowUpText(inspection, "All"),
-      inspectionAudit: [ndeSelected ? "" : cleanReportText(inspection.observations), loadText].filter(Boolean).join("\n"),
+      description: reportTextWithoutDeficiency(inspection.summary || inspection.generatedReportLanguage || generateReportLanguage(inspection), deficiency),
+      actionItems: [deficiency ? `Deficiency / exception: ${deficiency}` : "", inspectionFollowUpText(inspection, "All")].filter(Boolean).join("\n"),
+      inspectionAudit: [ndeOnly ? "" : observations, loadText].filter(Boolean).join("\n"),
       shopInspection: cleanReportText([generalActivities.join(", "), inspection.activity].filter(Boolean).join(" — ")),
-      ndeReview: ndeSelected ? (cleanReportText(inspection.observations) || "NDE review performed.") : "",
+      ndeReview: ndeSelected ? (ndeOnly ? (observations || "NDE review performed.") : "NDE review performed.") : "",
       coatingInspection: coatingReportLanguage(inspection),
       inspectionRelease: hasInspectionActivity(inspection, /release|final/i) || inspection.acceptanceStatus !== "Not Determined"
         ? inspection.acceptanceStatus
@@ -3384,7 +3394,10 @@
 
     const headerTable = wordElements(headerXml, "tbl")[0];
     const activeJob = activeJobById(inspection.activeJobId);
-    const reportLanguage = inspection.generatedReportLanguage || inspection.summary || inspection.activity || "";
+    const reportLanguage = reportTextWithoutDeficiency(
+      inspection.generatedReportLanguage || inspection.summary || inspection.activity || "",
+      inspection.deficiencies
+    );
     if (!headerTable) throw new Error("The S&B template header table is missing.");
     setHeaderLabelValue(headerTable, 1, 0, "CLIENT:", inspection.customer || "");
     setHeaderLabelValue(headerTable, 1, 1, "CLIENT PROJECT:", inspection.projectName || activeJob?.projectName || "");
@@ -3503,6 +3516,10 @@
     ];
 
     const embeddedPhotos = photos.filter((photo) => ["png", "jpg", "jpeg"].includes(photoExtension(photo)));
+    const summaryText = reportTextWithoutDeficiency(inspection.summary, inspection.deficiencies);
+    const reportLanguage = reportTextWithoutDeficiency(inspection.generatedReportLanguage, inspection.deficiencies);
+    const quickNoteText = reportTextWithoutDeficiency(inspection.quickNote, inspection.deficiencies);
+    const observationsText = reportTextWithoutDeficiency(inspection.observations, inspection.deficiencies);
     const imageRelationships = [];
     const mediaEntries = {};
     embeddedPhotos.forEach((photo, index) => {
@@ -3537,13 +3554,13 @@
       wordParagraph(`${inspection.activeJobId ? `${inspection.activeJobId} | ` : ""}${inspection.inspectionLocation || inspection.vendor || "Facility"}${inspection.sbInspectionNo || inspection.projectNumber ? ` | ${inspection.sbInspectionNo || inspection.projectNumber}` : ""}`, "Subtitle"),
       wordTable(metadata, [1500, 3180, 1500, 3180]),
       wordParagraph("Summary", "Heading1", { keepNext: true }),
-      wordParagraph(inspection.summary || "No summary entered."),
-      inspection.generatedReportLanguage ? wordParagraph("Generated Draft Report Language", "Heading1", { keepNext: true }) : "",
-      inspection.generatedReportLanguage ? wordParagraph(inspection.generatedReportLanguage) : "",
-      inspection.quickNote ? wordParagraph("Quick Note", "Heading1", { keepNext: true }) : "",
-      inspection.quickNote ? wordParagraph(inspection.quickNote) : "",
+      wordParagraph(summaryText || "No summary entered."),
+      reportLanguage ? wordParagraph("Generated Draft Report Language", "Heading1", { keepNext: true }) : "",
+      reportLanguage ? wordParagraph(reportLanguage) : "",
+      quickNoteText ? wordParagraph("Quick Note", "Heading1", { keepNext: true }) : "",
+      quickNoteText ? wordParagraph(quickNoteText) : "",
       wordParagraph("Observations", "Heading1", { keepNext: true }),
-      wordParagraph(inspection.observations || "No observations entered."),
+      wordParagraph(observationsText || "No observations entered."),
       inspectionLoads(inspection).length ? wordParagraph("Vendor Loads", "Heading1", { keepNext: true }) : "",
       inspectionLoads(inspection).length ? wordParagraph(loadDetailsText(inspection)) : "",
       wordParagraph("Deficiencies / Exceptions", "Heading1", { keepNext: true }),
@@ -4424,6 +4441,7 @@
     photoFigureCaption,
     buildInspectionPreviewModel,
     inspectionPreviewMarkup,
+    reportSectionText,
     buildInspectionDocx,
     buildSAndBInspectionDocx
   });

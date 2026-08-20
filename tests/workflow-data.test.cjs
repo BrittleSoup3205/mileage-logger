@@ -72,6 +72,15 @@ assert.deepEqual(Array.from(data.inspectionActivities(multiActivity)), [
   "Hydro / Pressure Test", "Coating Inspection", "Documentation Review"
 ], "One inspection must retain every selected activity");
 
+const migratedLegacyActivity = data.migrateInspection({
+  id: "inspection-legacy-activity",
+  inspectionType: "Inspection",
+  activity: "NDE review and coating inspection"
+});
+assert.deepEqual(Array.from(data.inspectionActivities(migratedLegacyActivity)), [
+  "Coating Inspection", "NDE Review"
+], "Legacy migration must infer every recognized activity from the existing Activity text");
+
 const withRate = data.migrateState({
   ...migrated,
   workflow: { ...migrated.workflow, mileageRate: "0.70" }
