@@ -149,9 +149,12 @@
   function parseSheetRows(xml, sharedStrings) {
     return [...text(xml).matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/gi)].map((rowMatch) => {
       const row = [];
-      for (const cell of rowMatch[1].matchAll(/<c\b([^>]*)>([\s\S]*?)<\/c>/gi)) {
-        const reference = xmlAttribute(cell[1], "r");
-        row[columnIndex(reference)] = parseCellValue(cell[1], cell[2], sharedStrings);
+      for (const cell of rowMatch[1].matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/gi)) {
+        const attributes = cell[1];
+        const body = cell[2] || "";
+        const reference = xmlAttribute(attributes, "r");
+        if (!reference) continue;
+        row[columnIndex(reference)] = parseCellValue(attributes, body, sharedStrings);
       }
       return row;
     });
