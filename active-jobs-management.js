@@ -25,6 +25,7 @@
     "client project number": "clientProjectNo",
     "s&b order / po": "sbOrder",
     "reporting vendor": "reportingVendor",
+    "reporting vendor / fabricator": "reportingVendor",
     "fabricator": "reportingVendor",
     "shop number": "vendorJobs",
     "vendor shop / job number(s)": "vendorJobs",
