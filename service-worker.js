@@ -1,4 +1,5 @@
-const CACHE_NAME = "mileage-logger-full-upgrade-list-v66";
+const CACHE_NAME = "mileage-logger-full-upgrade-list-v67";
+const ACTIVE_JOBS_MANAGEMENT_ASSET = "./active-jobs-management.js?v=reporting-vendor-header-1";
 const APP_FILES = [
   "./",
   "./index.html?v=full-upgrade-list-1",
@@ -11,7 +12,7 @@ const APP_FILES = [
   "./sync-engine.js?v=full-upgrade-list-1",
   "./media-store.js?v=visit-workspace-5",
   "./active-jobs-data.js?v=visit-workspace-5",
-  "./active-jobs-management.js?v=full-upgrade-list-1",
+  ACTIVE_JOBS_MANAGEMENT_ASSET,
   "./vendor/pdf-lib.min.js",
   "./vendor/fflate.min.js",
   "./manifest.webmanifest",
@@ -39,6 +40,21 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
+
+  const requestUrl = new URL(event.request.url);
+  if (requestUrl.pathname.endsWith("/active-jobs-management.js")) {
+    const activeJobsUrl = new URL(ACTIVE_JOBS_MANAGEMENT_ASSET, self.registration.scope).href;
+    event.respondWith(
+      caches.open(CACHE_NAME).then(async (cache) => {
+        const cached = await cache.match(activeJobsUrl);
+        if (cached) return cached;
+        const response = await fetch(activeJobsUrl, { cache: "reload" });
+        await cache.put(activeJobsUrl, response.clone());
+        return response;
+      })
+    );
+    return;
+  }
 
   event.respondWith(
     caches.match(event.request).then((cached) => {
