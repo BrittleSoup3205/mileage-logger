@@ -1,5 +1,5 @@
-const CACHE_NAME = "mileage-logger-full-upgrade-list-v67";
-const ACTIVE_JOBS_MANAGEMENT_ASSET = "./active-jobs-management.js?v=reporting-vendor-header-1";
+const CACHE_NAME = "mileage-logger-full-upgrade-list-v68";
+const ACTIVE_JOBS_MANAGEMENT_ASSET = "./active-jobs-management.js?v=xlsx-self-closing-cells-1";
 const APP_FILES = [
   "./",
   "./index.html?v=full-upgrade-list-1",
