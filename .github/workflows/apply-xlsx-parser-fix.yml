@@ -1,0 +1,145 @@
+name: Apply XLSX parser fix
+
+on:
+  push:
+    branches:
+      - agent/fix-xlsx-self-closing-cells
+    paths:
+      - .github/workflows/apply-xlsx-parser-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'Bootstrap XLSX parser fix'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-xlsx-self-closing-cells
+
+      - name: Patch XLSX parser and cache version
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          parser_path = Path('active-jobs-management.js')
+          source = parser_path.read_text(encoding='utf-8')
+          old = '''      for (const cell of rowMatch[1].matchAll(/<c\\b([^>]*)>([\\s\\S]*?)<\\/c>/gi)) {
+                const reference = xmlAttribute(cell[1], "r");
+                row[columnIndex(reference)] = parseCellValue(cell[1], cell[2], sharedStrings);
+              }'''
+          new = '''      for (const cell of rowMatch[1].matchAll(/<c\\b([^>]*?)(?:\\/>|>([\\s\\S]*?)<\\/c>)/gi)) {
+                const attributes = cell[1];
+                const body = cell[2] || "";
+                const reference = xmlAttribute(attributes, "r");
+                if (!reference) continue;
+                row[columnIndex(reference)] = parseCellValue(attributes, body, sharedStrings);
+              }'''
+          if old not in source:
+              raise SystemExit('Expected parseSheetRows block was not found; refusing to patch.')
+          parser_path.write_text(source.replace(old, new, 1), encoding='utf-8')
+
+          worker_path = Path('service-worker.js')
+          worker = worker_path.read_text(encoding='utf-8')
+          worker = worker.replace('mileage-logger-full-upgrade-list-v67', 'mileage-logger-full-upgrade-list-v68', 1)
+          worker = worker.replace('active-jobs-management.js?v=reporting-vendor-header-1', 'active-jobs-management.js?v=xlsx-self-closing-cells-1', 1)
+          worker_path.write_text(worker, encoding='utf-8')
+
+          cache_test = Path('tests/service-worker-active-jobs-refresh.test.cjs')
+          cache_source = cache_test.read_text(encoding='utf-8')
+          cache_source = cache_source.replace('mileage-logger-full-upgrade-list-v67', 'mileage-logger-full-upgrade-list-v68')
+          cache_source = cache_source.replace('active-jobs-management\\.js\\?v=reporting-vendor-header-1', 'active-jobs-management\\.js\\?v=xlsx-self-closing-cells-1')
+          cache_test.write_text(cache_source, encoding='utf-8')
+
+          regression = r'''const assert = require("node:assert/strict");
+          const management = require("../active-jobs-management.js");
+          const fflate = require("../vendor/fflate.min.js");
+
+          function xmlEscape(value) {
+            return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+          }
+
+          function inlineCell(ref, value) {
+            return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xmlEscape(value)}</t></is></c>`;
+          }
+
+          const headers = [
+            "Record ID", "Inspection Job #", "Client", "Client Project Name", "Client Project Number",
+            "S&B Order / PO", "Fabricator", "Shop Number", "Location", "Current Status",
+            "Latest Known Status / Next Action", "Open / Closed"
+          ];
+
+          const headerCells = headers.map((value, index) => inlineCell(`${String.fromCharCode(65 + index)}1`, value)).join("");
+          const row2 = [
+            inlineCell("A2", "AJ-017"),
+            inlineCell("B2", "E10379-432"),
+            inlineCell("C2", "Shell Norco"),
+            inlineCell("D2", "UE E-2329 Exchanger Bundle Replacement"),
+            '<c r="E2"/>',
+            '<c r="F2"/>',
+            inlineCell("G2", "Cembell"),
+            inlineCell("H2", "2607-9612"),
+            '<c r="I2"/>',
+            '<c r="J2"/>',
+            '<c r="K2"/>',
+            inlineCell("L2", "Open")
+          ].join("");
+          const row3 = [
+            inlineCell("A3", "AJ-018"),
+            inlineCell("B3", "E10379-433"),
+            inlineCell("C3", "Shell Norco"),
+            inlineCell("D3", "CR2 E-1211A, B, & C Bundle Replacements"),
+            '<c r="E3"/>',
+            '<c r="F3"/>',
+            inlineCell("G3", "Cembell"),
+            inlineCell("H3", "2607-9497"),
+            '<c r="I3"/>',
+            '<c r="J3"/>',
+            '<c r="K3"/>',
+            inlineCell("L3", "Open")
+          ].join("");
+
+          const entries = {
+            "xl/workbook.xml": fflate.strToU8('<?xml version="1.0"?><workbook xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Active Jobs" sheetId="1" r:id="rId1"/></sheets></workbook>'),
+            "xl/_rels/workbook.xml.rels": fflate.strToU8('<?xml version="1.0"?><Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>'),
+            "xl/worksheets/sheet1.xml": fflate.strToU8(`<?xml version="1.0"?><worksheet><sheetData><row r="1">${headerCells}</row><row r="2">${row2}</row><row r="3">${row3}</row></sheetData></worksheet>`)
+          };
+
+          const parsed = management.parseActiveJobsWorkbookBytes(fflate.zipSync(entries), fflate);
+          assert.equal(parsed.jobs.length, 2);
+          assert.equal(parsed.jobs[0].sbOrder, "", "A self-closing blank S&B Order / PO cell must remain blank");
+          assert.equal(parsed.jobs[0].reportingVendor, "Cembell", "Fabricator after a self-closing blank cell must stay in its own column");
+          assert.equal(parsed.jobs[0].vendorJobs, "2607-9612");
+          assert.equal(parsed.jobs[0].openClosed, "Open", "Consecutive self-closing blanks must not consume a later Open / Closed value");
+          assert.equal(parsed.jobs[1].reportingVendor, "Cembell");
+          assert.equal(parsed.jobs[1].vendorJobs, "2607-9497");
+          assert.equal(parsed.jobs[1].openClosed, "Open");
+
+          const review = management.buildImportReview([], parsed.jobs);
+          assert.equal(review.counts.CONFLICT, 0, "Valid new rows must not be flagged as missing a reporting vendor");
+          assert.equal(review.counts.NEW, 2);
+
+          console.log("Active Jobs XLSX self-closing cell regression tests passed.");
+          '''
+          Path('tests/active-jobs-xlsx-self-closing-cells.test.cjs').write_text(regression, encoding='utf-8')
+          PY
+
+      - name: Run regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for test_file in tests/*.test.cjs; do
+            node "$test_file"
+          done
+
+      - name: Commit parser fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add active-jobs-management.js service-worker.js tests/service-worker-active-jobs-refresh.test.cjs tests/active-jobs-xlsx-self-closing-cells.test.cjs
+          git commit -m "Fix XLSX self-closing cell parsing"
+          git push origin HEAD:agent/fix-xlsx-self-closing-cells
