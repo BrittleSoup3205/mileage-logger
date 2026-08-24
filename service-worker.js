@@ -1,7 +1,8 @@
-const CACHE_NAME = "mileage-logger-photo-cloud-v72";
+const CACHE_NAME = "mileage-logger-report-fixes-v73";
 const ACTIVE_JOBS_MANAGEMENT_ASSET = "./active-jobs-management.js?v=xlsx-self-closing-cells-1";
+const REPORT_EXPORT_FIX_ASSET = "./report-export-fixes.js?v=s-and-b-report-fixes-1";
 const PHOTO_CLOUD_ASSET = "./photo-cloud-sync.js?v=cloud-photos-2";
-const INDEX_ASSET = "./index.html?v=cloud-photos-2";
+const INDEX_ASSET = "./index.html?v=report-fixes-1";
 const APP_FILES = [
   "./",
   INDEX_ASSET,
@@ -15,6 +16,7 @@ const APP_FILES = [
   "./media-store.js?v=visit-workspace-5",
   "./active-jobs-data.js?v=visit-workspace-5",
   ACTIVE_JOBS_MANAGEMENT_ASSET,
+  REPORT_EXPORT_FIX_ASSET,
   PHOTO_CLOUD_ASSET,
   "./vendor/pdf-lib.min.js",
   "./vendor/fflate.min.js",
@@ -41,16 +43,26 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-async function injectPhotoCloudLoader(response) {
+async function injectRuntimeLoaders(response) {
   if (!response) return response;
   const contentType = response.headers.get("content-type") || "";
   if (!contentType.includes("text/html")) return response;
-  const html = await response.text();
-  if (html.includes("photo-cloud-sync.js")) {
-    return new Response(html, { status: response.status, statusText: response.statusText, headers: response.headers });
+  let html = await response.text();
+
+  if (!html.includes("report-export-fixes.js")) {
+    const mediaTag = '<script src="./media-store.js?v=visit-workspace-5"></script>';
+    if (html.includes(mediaTag)) {
+      html = html.replace(mediaTag, `  <script src="${REPORT_EXPORT_FIX_ASSET}"></script>\n  ${mediaTag}`);
+    } else {
+      html = html.replace("</body>", `  <script src="${REPORT_EXPORT_FIX_ASSET}"></script>\n</body>`);
+    }
   }
-  const injected = html.replace("</body>", `  <script src="${PHOTO_CLOUD_ASSET}"></script>\n</body>`);
-  return new Response(injected, { status: response.status, statusText: response.statusText, headers: response.headers });
+
+  if (!html.includes("photo-cloud-sync.js")) {
+    html = html.replace("</body>", `  <script src="${PHOTO_CLOUD_ASSET}"></script>\n</body>`);
+  }
+
+  return new Response(html, { status: response.status, statusText: response.statusText, headers: response.headers });
 }
 
 self.addEventListener("fetch", (event) => {
@@ -63,12 +75,12 @@ self.addEventListener("fetch", (event) => {
         const response = await fetch(event.request, { cache: "reload" });
         const cache = await caches.open(CACHE_NAME);
         await cache.put(event.request, response.clone());
-        return injectPhotoCloudLoader(response);
+        return injectRuntimeLoaders(response);
       } catch (_) {
         const cached = await caches.match(event.request)
           || await caches.match(INDEX_ASSET)
           || await caches.match("./");
-        return injectPhotoCloudLoader(cached);
+        return injectRuntimeLoaders(cached);
       }
     })());
     return;
