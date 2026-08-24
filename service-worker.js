@@ -1,8 +1,9 @@
-const CACHE_NAME = "mileage-logger-report-fixes-v73";
+const CACHE_NAME = "mileage-logger-report-fixes-v74";
 const ACTIVE_JOBS_MANAGEMENT_ASSET = "./active-jobs-management.js?v=xlsx-self-closing-cells-1";
 const REPORT_EXPORT_FIX_ASSET = "./report-export-fixes.js?v=s-and-b-report-fixes-1";
+const PHOTO_INDENT_FIX_ASSET = "./photo-indent-fix.js?v=s-and-b-photo-indent-1";
 const PHOTO_CLOUD_ASSET = "./photo-cloud-sync.js?v=cloud-photos-2";
-const INDEX_ASSET = "./index.html?v=report-fixes-1";
+const INDEX_ASSET = "./index.html?v=report-fixes-2";
 const APP_FILES = [
   "./",
   INDEX_ASSET,
@@ -17,6 +18,7 @@ const APP_FILES = [
   "./active-jobs-data.js?v=visit-workspace-5",
   ACTIVE_JOBS_MANAGEMENT_ASSET,
   REPORT_EXPORT_FIX_ASSET,
+  PHOTO_INDENT_FIX_ASSET,
   PHOTO_CLOUD_ASSET,
   "./vendor/pdf-lib.min.js",
   "./vendor/fflate.min.js",
@@ -60,6 +62,10 @@ async function injectRuntimeLoaders(response) {
 
   if (!html.includes("photo-cloud-sync.js")) {
     html = html.replace("</body>", `  <script src="${PHOTO_CLOUD_ASSET}"></script>\n</body>`);
+  }
+
+  if (!html.includes("photo-indent-fix.js")) {
+    html = html.replace("</body>", `  <script src="${PHOTO_INDENT_FIX_ASSET}"></script>\n</body>`);
   }
 
   return new Response(html, { status: response.status, statusText: response.statusText, headers: response.headers });
