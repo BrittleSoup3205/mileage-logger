@@ -1,20 +1,24 @@
-name: One-time inspection photo export hotfix
+name: Apply inspection photo export fix
 
 on:
   push:
+    branches:
+      - agent/fix-inspection-trip-photos
     paths:
-      - ".github/workflows/inspection-photo-hotfix.yml"
+      - .github/workflows/inspection-photo-hotfix.yml
 
 permissions:
   contents: write
 
 jobs:
   hotfix:
+    if: github.event.head_commit.message == 'Bootstrap inspection photo export fix'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
+          ref: agent/fix-inspection-trip-photos
           fetch-depth: 0
 
       - name: Patch inspection Word photo export
@@ -195,6 +199,7 @@ console.log("inspection trip-photo export regression checks passed");
       - name: Run JavaScript syntax and regression tests
         shell: bash
         run: |
+          set -euo pipefail
           node --check inspections.js
           node tests/inspection-word-preview.test.cjs
           node tests/inspection-trip-photo-export.test.cjs
@@ -202,12 +207,11 @@ console.log("inspection trip-photo export regression checks passed");
             node "$test_file" >/dev/null
           done
 
-      - name: Commit hotfix and remove one-time workflow
+      - name: Commit hotfix
         shell: bash
         run: |
-          rm .github/workflows/inspection-photo-hotfix.yml
-          git config user.name "Mileage Logger Hotfix"
-          git config user.email "actions@users.noreply.github.com"
-          git add inspections.js service-worker.js index.html tests/inspection-trip-photo-export.test.cjs .github/workflows/inspection-photo-hotfix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add inspections.js service-worker.js index.html tests/inspection-trip-photo-export.test.cjs
           git commit -m "Fix trip photos in inspection Word exports"
-          git push origin HEAD:main
+          git push origin HEAD:agent/fix-inspection-trip-photos
