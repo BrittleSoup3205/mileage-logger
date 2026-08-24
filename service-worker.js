@@ -1,9 +1,10 @@
-const CACHE_NAME = "mileage-logger-photo-cloud-v71";
+const CACHE_NAME = "mileage-logger-photo-cloud-v72";
 const ACTIVE_JOBS_MANAGEMENT_ASSET = "./active-jobs-management.js?v=xlsx-self-closing-cells-1";
 const PHOTO_CLOUD_ASSET = "./photo-cloud-sync.js?v=cloud-photos-2";
+const INDEX_ASSET = "./index.html?v=cloud-photos-2";
 const APP_FILES = [
   "./",
-  "./index.html?v=full-upgrade-list-1",
+  INDEX_ASSET,
   "./styles.css?v=full-upgrade-list-1",
   "./multi-device.css?v=multi-device-1",
   "./workflow-data.js?v=full-upgrade-list-1",
@@ -65,7 +66,7 @@ self.addEventListener("fetch", (event) => {
         return injectPhotoCloudLoader(response);
       } catch (_) {
         const cached = await caches.match(event.request)
-          || await caches.match("./index.html?v=full-upgrade-list-1")
+          || await caches.match(INDEX_ASSET)
           || await caches.match("./");
         return injectPhotoCloudLoader(cached);
       }
@@ -95,7 +96,7 @@ self.addEventListener("fetch", (event) => {
         const copy = response.clone();
         caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
         return response;
-      }).catch(() => caches.match("./index.html?v=full-upgrade-list-1"));
+      }).catch(() => caches.match(INDEX_ASSET));
     })
   );
 });
