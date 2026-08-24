@@ -1,6 +1,6 @@
-const CACHE_NAME = "mileage-logger-photo-cloud-v70";
+const CACHE_NAME = "mileage-logger-photo-cloud-v71";
 const ACTIVE_JOBS_MANAGEMENT_ASSET = "./active-jobs-management.js?v=xlsx-self-closing-cells-1";
-const PHOTO_CLOUD_ASSET = "./photo-cloud-sync.js?v=cloud-photos-1";
+const PHOTO_CLOUD_ASSET = "./photo-cloud-sync.js?v=cloud-photos-2";
 const APP_FILES = [
   "./",
   "./index.html?v=full-upgrade-list-1",
