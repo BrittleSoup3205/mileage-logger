@@ -1,9 +1,9 @@
-const CACHE_NAME = "mileage-logger-report-fixes-v74";
+const CACHE_NAME = "mileage-logger-report-fixes-v75";
 const ACTIVE_JOBS_MANAGEMENT_ASSET = "./active-jobs-management.js?v=xlsx-self-closing-cells-1";
 const REPORT_EXPORT_FIX_ASSET = "./report-export-fixes.js?v=s-and-b-report-fixes-1";
 const PHOTO_INDENT_FIX_ASSET = "./photo-indent-fix.js?v=s-and-b-photo-indent-1";
 const PHOTO_CLOUD_ASSET = "./photo-cloud-sync.js?v=cloud-photos-2";
-const INDEX_ASSET = "./index.html?v=report-fixes-2";
+const INDEX_ASSET = "./index.html?v=report-fixes-3";
 const APP_FILES = [
   "./",
   INDEX_ASSET,
