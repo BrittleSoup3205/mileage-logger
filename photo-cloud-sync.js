@@ -6,6 +6,8 @@
   const CONFIG_KEY = "mileage_logger_sync_config_v1";
   const SESSION_KEY = "mileage_logger_sync_session_v1";
   const PHOTO_META_KEY = "mileage_logger_photo_cloud_meta_v1";
+  const DEFAULT_PROJECT_URL = "https://osvubxisjfplnljabvrn.supabase.co";
+  const DEFAULT_PUBLISHABLE_KEY = "sb_publishable_n3tp6B8y5abgPN1r7ITUYA_cMuE7AlP";
   const SYNC_INTERVAL_MS = 60000;
   const MAX_CONCURRENCY = 3;
 
@@ -43,8 +45,8 @@
     const config = readJSON(CONFIG_KEY, {});
     return {
       enabled: config.enabled === undefined ? true : Boolean(config.enabled),
-      projectUrl: String(config.projectUrl || "").trim().replace(/\/$/, ""),
-      publishableKey: String(config.publishableKey || "").trim()
+      projectUrl: String(config.projectUrl || DEFAULT_PROJECT_URL).trim().replace(/\/$/, ""),
+      publishableKey: String(config.publishableKey || DEFAULT_PUBLISHABLE_KEY).trim()
     };
   }
 
@@ -87,25 +89,14 @@
   }
 
   async function validSession() {
-    let session = loadSession();
+    const session = loadSession();
     if (!sessionReady(session)) return null;
     const expiresAt = Number(session.expires_at || 0) * 1000;
-    if (!expiresAt || expiresAt - Date.now() > 60000) return session;
-
-    const config = loadConfig();
-    const response = await fetch(`${config.projectUrl}/auth/v1/token?grant_type=refresh_token`, {
-      method: "POST",
-      headers: { apikey: config.publishableKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: session.refresh_token })
-    });
-    const text = await response.text();
-    const body = text ? safeJSONParse(text, {}) : {};
-    if (!response.ok) {
-      saveSession(null);
-      throw new Error(body?.error_description || body?.msg || "Mileage Logger cloud sign-in expired.");
+    if (expiresAt && expiresAt - Date.now() <= 60000) {
+      // The existing sync engine owns refresh-token rotation. Avoid racing it here;
+      // the next photo-sync pass will use the refreshed session it saves.
+      return null;
     }
-    session = body;
-    saveSession(session);
     return session;
   }
 
@@ -309,12 +300,14 @@
         const nextMeta = cloudMeta();
         nextMeta.lastSyncISO = new Date().toISOString();
         saveCloudMeta(nextMeta);
+        renderStatusUI();
         window.dispatchEvent(new CustomEvent("mileage:photo-cloud-sync", { detail: { ...lastStatus, reason: options.reason || "automatic" } }));
         if (errors.length) console.warn("Mileage Logger photo cloud sync needs retry:", errors);
         return !errors.length;
       } catch (error) {
         lastStatus = { state: "error", uploaded, downloaded, pending: 1, message: error.message };
         console.warn("Mileage Logger photo cloud sync failed:", error);
+        renderStatusUI();
         window.dispatchEvent(new CustomEvent("mileage:photo-cloud-sync", { detail: { ...lastStatus, reason: options.reason || "automatic" } }));
         return false;
       } finally {
@@ -323,6 +316,49 @@
     })();
 
     return syncInFlight;
+  }
+
+  function renderStatusUI() {
+    const target = document.getElementById("photoCloudSyncStatus");
+    if (!target) return;
+    const meta = cloudMeta();
+    const last = meta.lastSyncISO ? new Date(meta.lastSyncISO).toLocaleString() : "Not yet completed";
+    target.textContent = `${lastStatus.message} Last photo sync: ${last}.`;
+    target.dataset.syncState = lastStatus.state;
+  }
+
+  function injectStatusUI() {
+    if (document.getElementById("photoCloudSyncPanel")) {
+      renderStatusUI();
+      return;
+    }
+    const card = document.getElementById("multiDeviceSyncCard");
+    if (!card) {
+      setTimeout(injectStatusUI, 1000);
+      return;
+    }
+    const panel = document.createElement("div");
+    panel.id = "photoCloudSyncPanel";
+    panel.innerHTML = `
+      <div class="sync-heading"><div><p class="eyebrow">Private attachments</p><h4>Cloud Photos</h4></div></div>
+      <div id="photoCloudSyncStatus" class="sync-status">Preparing private photo synchronization…</div>
+      <div class="form-actions wrap sync-actions">
+        <button id="photoCloudSyncNowBtn" class="button button-secondary button-small" type="button">Sync Photos Now</button>
+      </div>`;
+    card.appendChild(panel);
+    panel.querySelector("#photoCloudSyncNowBtn")?.addEventListener("click", async (event) => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      button.textContent = "Syncing Photos…";
+      try {
+        await syncNow({ reason: "manual" });
+      } finally {
+        button.disabled = false;
+        button.textContent = "Sync Photos Now";
+        renderStatusUI();
+      }
+    });
+    renderStatusUI();
   }
 
   function scheduleSync(delay = 2500) {
@@ -363,6 +399,7 @@
     if ([STATE_KEY, SESSION_KEY, CONFIG_KEY].includes(event.key)) scheduleSync(1000);
   });
 
+  injectStatusUI();
   setTimeout(() => scheduleSync(500), 3500);
   setInterval(() => syncNow({ reason: "interval" }), SYNC_INTERVAL_MS);
 })();
