@@ -14,6 +14,42 @@
     )) || null;
   }
 
+  function wordAncestor(node, localName) {
+    let parent = node?.parentElement || null;
+    while (parent) {
+      if (parent.namespaceURI === WORD_NS && parent.localName === localName) return parent;
+      parent = parent.parentElement;
+    }
+    return null;
+  }
+
+  function zeroPhotoCellSideMargins(documentXml, paragraph) {
+    const cell = wordAncestor(paragraph, "tc");
+    if (!cell) return;
+
+    let cellProperties = directWordChild(cell, "tcPr");
+    if (!cellProperties) {
+      cellProperties = documentXml.createElementNS(WORD_NS, "w:tcPr");
+      cell.insertBefore(cellProperties, cell.firstChild);
+    }
+
+    let cellMargins = directWordChild(cellProperties, "tcMar");
+    if (!cellMargins) {
+      cellMargins = documentXml.createElementNS(WORD_NS, "w:tcMar");
+      cellProperties.appendChild(cellMargins);
+    }
+
+    ["left", "right", "start", "end"].forEach((side) => {
+      let margin = directWordChild(cellMargins, side);
+      if (!margin) {
+        margin = documentXml.createElementNS(WORD_NS, `w:${side}`);
+        cellMargins.appendChild(margin);
+      }
+      margin.setAttributeNS(WORD_NS, "w:w", "0");
+      margin.setAttributeNS(WORD_NS, "w:type", "dxa");
+    });
+  }
+
   function resetPhotoParagraphIndents(bytes) {
     if (!window.fflate) return bytes;
     const files = window.fflate.unzipSync(new Uint8Array(bytes));
@@ -55,6 +91,8 @@
         paragraphProperties.appendChild(alignment);
       }
       alignment.setAttributeNS(WORD_NS, "w:val", "center");
+
+      zeroPhotoCellSideMargins(documentXml, paragraph);
     });
 
     files["word/document.xml"] = encoder.encode(new XMLSerializer().serializeToString(documentXml));
