@@ -1,11 +1,12 @@
-const CACHE_NAME = "mileage-logger-report-fixes-v79";
+const CACHE_NAME = "mileage-logger-report-fixes-v80";
 const ACTIVE_JOBS_MANAGEMENT_ASSET = "./active-jobs-management.js?v=xlsx-self-closing-cells-1";
+const ACTIVE_JOBS_ACTIVITY_EXPORT_FIX_ASSET = "./active-jobs-activity-export-fix.js?v=activity-feed-2";
 const REPORT_EXPORT_FIX_ASSET = "./report-export-fixes.js?v=s-and-b-report-fixes-1";
 const PHOTO_INDENT_FIX_ASSET = "./photo-indent-fix.js?v=s-and-b-photo-indent-2";
 const PHOTO_CLOUD_ASSET = "./photo-cloud-sync.js?v=cloud-photos-2";
 const AUTO_REPORT_TEXT_ASSET = "./auto-report-text.js?v=phrase-library-1";
 const COATING_SYSTEM_LABEL_FIX_ASSET = "./coating-system-label-fix.js?v=coating-system-labels-1";
-const INDEX_ASSET = "./index.html?v=report-fixes-7";
+const INDEX_ASSET = "./index.html?v=report-fixes-8";
 const APP_FILES = [
   "./",
   INDEX_ASSET,
@@ -19,6 +20,7 @@ const APP_FILES = [
   "./media-store.js?v=visit-workspace-5",
   "./active-jobs-data.js?v=visit-workspace-5",
   ACTIVE_JOBS_MANAGEMENT_ASSET,
+  ACTIVE_JOBS_ACTIVITY_EXPORT_FIX_ASSET,
   REPORT_EXPORT_FIX_ASSET,
   PHOTO_INDENT_FIX_ASSET,
   PHOTO_CLOUD_ASSET,
@@ -61,6 +63,15 @@ async function injectRuntimeLoaders(response) {
       html = html.replace(mediaTag, `  <script src="${REPORT_EXPORT_FIX_ASSET}"></script>\n  ${mediaTag}`);
     } else {
       html = html.replace("</body>", `  <script src="${REPORT_EXPORT_FIX_ASSET}"></script>\n</body>`);
+    }
+  }
+
+  if (!html.includes("active-jobs-activity-export-fix.js")) {
+    const activeJobsDataTag = '<script src="./active-jobs-data.js?v=visit-workspace-5"></script>';
+    if (html.includes(activeJobsDataTag)) {
+      html = html.replace(activeJobsDataTag, `${activeJobsDataTag}\n  <script src="${ACTIVE_JOBS_ACTIVITY_EXPORT_FIX_ASSET}"></script>`);
+    } else {
+      html = html.replace("</body>", `  <script src="${ACTIVE_JOBS_ACTIVITY_EXPORT_FIX_ASSET}"></script>\n</body>`);
     }
   }
 
