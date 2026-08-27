@@ -142,11 +142,17 @@
         let cloud=await cloudRows();
         let local=records(state);
         const cloudMap=new Map(cloud.map((r)=>[keyOf(r.record_type,r.record_id),r]));
+        const badgeText=document.getElementById("multiDeviceSyncIndicator")?.textContent?.trim() || "";
+        const authoritative = reason === "badge-verification" || reason === "manual-wrapper" || badgeText === "SYNCED";
 
-        // Restore cloud records that are missing locally. For same-ID differences, cloud is canonical
-        // after the normal sync engine has had its chance to push local edits.
+        // Before the normal engine completes, only restore records that are entirely missing.
+        // Never overwrite a same-ID local edit until the normal sync pass has had a chance to push it.
         let changed=false;
-        cloud.forEach((r)=>{const k=keyOf(r.record_type,r.record_id),l=local.get(k);const differs=r.tombstone?Boolean(l):(!l||hash(l.payload)!==hash(r.payload));if(differs){apply(state,r);changed=true;}});
+        cloud.forEach((r)=>{
+          const k=keyOf(r.record_type,r.record_id),l=local.get(k);
+          const shouldApply = r.tombstone ? (authoritative && Boolean(l)) : (!l || (authoritative && hash(l.payload)!==hash(r.payload)));
+          if(shouldApply){apply(state,r);changed=true;}
+        });
         if(changed){recalc(state);localStorage.setItem(STATE_KEY,JSON.stringify(state));window.dispatchEvent(new CustomEvent("mileage:state-changed",{detail:{source:"verified-sync-repair"}}));}
 
         // Preserve any local-only records by uploading them rather than deleting them.
@@ -155,9 +161,13 @@
         local.forEach((r,k)=>{if(!cloudMap.has(k))outgoing.push({user_id:s.user.id,record_type:r.type,record_id:r.id,payload:r.payload,device_id:deviceId(),tombstone:false});});
         if(outgoing.length){await push(outgoing);cloud=await cloudRows();}
 
-        // Final cloud-to-local equality pass.
+        // Final cloud-to-local equality pass. Same-ID overwrite is allowed only after the normal engine reports success.
         state=shape(read(STATE_KEY,{})); local=records(state); changed=false;
-        cloud.forEach((r)=>{const k=keyOf(r.record_type,r.record_id),l=local.get(k);const differs=r.tombstone?Boolean(l):(!l||hash(l.payload)!==hash(r.payload));if(differs){apply(state,r);changed=true;}});
+        cloud.forEach((r)=>{
+          const k=keyOf(r.record_type,r.record_id),l=local.get(k);
+          const shouldApply = r.tombstone ? (authoritative && Boolean(l)) : (!l || (authoritative && hash(l.payload)!==hash(r.payload)));
+          if(shouldApply){apply(state,r);changed=true;}
+        });
         if(changed){recalc(state);localStorage.setItem(STATE_KEY,JSON.stringify(state));window.dispatchEvent(new CustomEvent("mileage:state-changed",{detail:{source:"verified-sync-repair"}}));}
 
         state=shape(read(STATE_KEY,{})); local=records(state); const check=summary(local,cloud); const now=new Date().toISOString();
