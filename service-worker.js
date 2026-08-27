@@ -1,14 +1,14 @@
-const CACHE_NAME = "mileage-logger-report-fixes-v82";
+const CACHE_NAME = "mileage-logger-report-fixes-v83";
 const ACTIVE_JOBS_MANAGEMENT_ASSET = "./active-jobs-management.js?v=xlsx-self-closing-cells-1";
 const ACTIVE_JOBS_ACTIVITY_EXPORT_FIX_ASSET = "./active-jobs-activity-export-fix.js?v=activity-feed-2";
 const ACTIVE_JOBS_IMPORT_AJ_IDENTITY_FIX_ASSET = "./active-jobs-import-aj-identity-fix.js?v=aj-identity-1";
-const SYNC_VERIFIED_REPAIR_ASSET = "./sync-verified-repair.js?v=verified-sync-1";
+const SYNC_VERIFIED_REPAIR_ASSET = "./sync-verified-repair-v2.js?v=verified-sync-2";
 const REPORT_EXPORT_FIX_ASSET = "./report-export-fixes.js?v=s-and-b-report-fixes-1";
 const PHOTO_INDENT_FIX_ASSET = "./photo-indent-fix.js?v=s-and-b-photo-indent-2";
 const PHOTO_CLOUD_ASSET = "./photo-cloud-sync.js?v=cloud-photos-2";
 const AUTO_REPORT_TEXT_ASSET = "./auto-report-text.js?v=phrase-library-1";
 const COATING_SYSTEM_LABEL_FIX_ASSET = "./coating-system-label-fix.js?v=coating-system-labels-1";
-const INDEX_ASSET = "./index.html?v=report-fixes-10";
+const INDEX_ASSET = "./index.html?v=report-fixes-11";
 const APP_FILES = [
   "./",
   INDEX_ASSET,
@@ -88,7 +88,7 @@ async function injectRuntimeLoaders(response) {
     }
   }
 
-  if (!html.includes("sync-verified-repair.js")) {
+  if (!html.includes("sync-verified-repair-v2.js")) {
     const syncTag = '<script src="./sync-engine.js?v=full-upgrade-list-1"></script>';
     if (html.includes(syncTag)) {
       html = html.replace(syncTag, `${syncTag}\n  <script src="${SYNC_VERIFIED_REPAIR_ASSET}"></script>`);
