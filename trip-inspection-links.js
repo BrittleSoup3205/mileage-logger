@@ -3,6 +3,7 @@
 
   const STATE_KEY = "mileage_logger_state_v3";
   let decorating = false;
+  let scheduled = false;
 
   function escapeHTML(value) {
     return String(value ?? "")
@@ -24,9 +25,14 @@
     }
   }
 
-  function linkedInspections(tripId) {
-    if (!tripId) return [];
-    return readState().settings.inspections.filter((inspection) => inspection?.tripId === tripId);
+  function inspectionsByTrip() {
+    const map = new Map();
+    readState().settings.inspections.forEach((inspection) => {
+      if (!inspection?.tripId) return;
+      if (!map.has(inspection.tripId)) map.set(inspection.tripId, []);
+      map.get(inspection.tripId).push(inspection);
+    });
+    return map;
   }
 
   function inspectionLabel(inspection) {
@@ -38,12 +44,10 @@
   }
 
   function reportReady(inspection) {
-    return Boolean(
-      inspection && inspection.id && (
-        inspection.date || inspection.inspectionDate || inspection.reportingVendor || inspection.vendor ||
-        inspection.activity || inspection.summary || inspection.observations || inspection.generatedReportLanguage
-      )
-    );
+    return Boolean(inspection?.id && (
+      inspection.date || inspection.inspectionDate || inspection.reportingVendor || inspection.vendor ||
+      inspection.activity || inspection.summary || inspection.observations || inspection.generatedReportLanguage
+    ));
   }
 
   function ensureStyles() {
@@ -74,13 +78,10 @@
     row.insertBefore(th, actionHeader || null);
   }
 
-  function renderCell(cell, inspections) {
-    if (!inspections.length) {
-      cell.innerHTML = `<span class="trip-inspection-none">No linked inspection</span>`;
-      return;
-    }
+  function cellMarkup(inspections) {
+    if (!inspections.length) return `<span class="trip-inspection-none">No linked inspection</span>`;
     const status = inspections.length === 1 ? "INSPECTION" : `${inspections.length} INSPECTIONS`;
-    cell.innerHTML = `
+    return `
       <div class="trip-inspection-stack">
         <span class="trip-inspection-status${inspections.length > 1 ? " multi" : ""}">${status}</span>
         ${inspections.map((inspection) => `
@@ -96,18 +97,34 @@
     `;
   }
 
+  function signature(inspections) {
+    return inspections.map((inspection) => [
+      inspection.id,
+      inspection.activeJobId,
+      inspection.sbInspectionNo,
+      inspection.projectNumber,
+      inspection.inspectionType,
+      inspection.activity,
+      reportReady(inspection) ? "1" : "0"
+    ].join("~")).join("||") || "none";
+  }
+
   function decorateRows() {
+    scheduled = false;
     if (decorating) return;
     const table = document.getElementById("tripTable");
     const tbody = table?.tBodies?.[0];
     if (!table || !tbody) return;
+
     decorating = true;
     try {
       ensureHeader(table);
+      const byTrip = inspectionsByTrip();
       [...tbody.rows].forEach((row) => {
         const editButton = row.querySelector("[data-edit-trip]");
         const tripId = editButton?.dataset.editTrip || "";
         if (!tripId) return;
+        const inspections = byTrip.get(tripId) || [];
         let cell = row.querySelector("td[data-trip-inspection-cell]");
         if (!cell) {
           cell = document.createElement("td");
@@ -116,11 +133,21 @@
           const actionCell = editButton.closest("td");
           row.insertBefore(cell, actionCell || null);
         }
-        renderCell(cell, linkedInspections(tripId));
+        const nextSignature = signature(inspections);
+        if (cell.dataset.tripInspectionSignature !== nextSignature) {
+          cell.innerHTML = cellMarkup(inspections);
+          cell.dataset.tripInspectionSignature = nextSignature;
+        }
       });
     } finally {
       decorating = false;
     }
+  }
+
+  function scheduleDecorate(delay = 0) {
+    if (scheduled) return;
+    scheduled = true;
+    setTimeout(decorateRows, delay);
   }
 
   function findNativeInspectionButton(attribute, inspectionId) {
@@ -129,26 +156,12 @@
   }
 
   function activateNativeAction(attribute, inspectionId) {
-    let target = findNativeInspectionButton(attribute, inspectionId);
+    const target = findNativeInspectionButton(attribute, inspectionId);
     if (target) {
       target.click();
-      return true;
+      return;
     }
-
-    // Inspection UI may still be completing its first render. Give it a short chance to appear.
-    let attempts = 0;
-    const timer = setInterval(() => {
-      attempts += 1;
-      target = findNativeInspectionButton(attribute, inspectionId);
-      if (target) {
-        clearInterval(timer);
-        target.click();
-      } else if (attempts >= 8) {
-        clearInterval(timer);
-        window.alert("The linked inspection is saved, but its inspection workspace is not available on this screen yet. Open Inspections once, then return to Trip Log and try again.");
-      }
-    }, 250);
-    return false;
+    window.alert("The linked inspection is saved. Open the Inspections section once, then return to Trip Log and try this action again.");
   }
 
   function install() {
@@ -161,8 +174,11 @@
     }
 
     decorateRows();
-    const observer = new MutationObserver(() => queueMicrotask(decorateRows));
-    observer.observe(tbody, { childList: true, subtree: true });
+
+    // Observe only rows being added/removed by the native Trip Log renderer.
+    // Do not observe descendants; this script modifies cells itself.
+    const observer = new MutationObserver(() => scheduleDecorate(0));
+    observer.observe(tbody, { childList: true });
 
     table.addEventListener("click", (event) => {
       const openButton = event.target.closest("[data-trip-open-inspection]");
@@ -180,9 +196,9 @@
       }
     });
 
-    window.addEventListener("mileage:state-changed", () => setTimeout(decorateRows, 50));
+    window.addEventListener("mileage:state-changed", () => scheduleDecorate(50));
     window.addEventListener("storage", (event) => {
-      if (event.key === STATE_KEY) setTimeout(decorateRows, 50);
+      if (event.key === STATE_KEY) scheduleDecorate(50);
     });
   }
 
