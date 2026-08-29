@@ -1,16 +1,17 @@
-const CACHE_NAME = "mileage-logger-report-fixes-v86";
+const CACHE_NAME = "mileage-logger-report-fixes-v87";
 const ACTIVE_JOBS_MANAGEMENT_ASSET = "./active-jobs-management.js?v=xlsx-self-closing-cells-1";
 const ACTIVE_JOBS_ACTIVITY_EXPORT_FIX_ASSET = "./active-jobs-activity-export-fix.js?v=activity-feed-2";
 const ACTIVE_JOBS_IMPORT_AJ_IDENTITY_FIX_ASSET = "./active-jobs-import-aj-identity-fix.js?v=aj-identity-1";
 const SYNC_VERIFIED_REPAIR_ASSET = "./sync-verified-repair-v2.js?v=verified-sync-2";
 const LAST_ODOMETER_FIX_ASSET = "./last-odometer-derived-fix.js?v=derived-odometer-1";
 const TRIP_INSPECTION_LINKS_ASSET = "./trip-inspection-links.js?v=trip-inspection-links-2";
+const TRIP_LOG_DESKTOP_ASSET = "./trip-log-desktop.js?v=desktop-log-1";
 const REPORT_EXPORT_FIX_ASSET = "./report-export-fixes.js?v=s-and-b-report-fixes-1";
 const PHOTO_INDENT_FIX_ASSET = "./photo-indent-fix.js?v=s-and-b-photo-indent-2";
 const PHOTO_CLOUD_ASSET = "./photo-cloud-sync.js?v=cloud-photos-2";
 const AUTO_REPORT_TEXT_ASSET = "./auto-report-text.js?v=phrase-library-1";
 const COATING_SYSTEM_LABEL_FIX_ASSET = "./coating-system-label-fix.js?v=coating-system-labels-1";
-const INDEX_ASSET = "./index.html?v=report-fixes-14";
+const INDEX_ASSET = "./index.html?v=report-fixes-15";
 const APP_FILES = [
   "./",
   INDEX_ASSET,
@@ -21,6 +22,7 @@ const APP_FILES = [
   "./app.js?v=full-upgrade-list-1",
   "./inspections.js?v=full-upgrade-list-1",
   TRIP_INSPECTION_LINKS_ASSET,
+  TRIP_LOG_DESKTOP_ASSET,
   "./workflow-queues.js?v=full-upgrade-list-1",
   "./sync-engine.js?v=full-upgrade-list-1",
   SYNC_VERIFIED_REPAIR_ASSET,
@@ -80,6 +82,15 @@ async function injectRuntimeLoaders(response) {
       html = html.replace(inspectionsTag, `${inspectionsTag}\n  <script src="${TRIP_INSPECTION_LINKS_ASSET}"></script>`);
     } else {
       html = html.replace("</body>", `  <script src="${TRIP_INSPECTION_LINKS_ASSET}"></script>\n</body>`);
+    }
+  }
+
+  if (!html.includes("trip-log-desktop.js")) {
+    const tripInspectionTag = `<script src="${TRIP_INSPECTION_LINKS_ASSET}"></script>`;
+    if (html.includes(tripInspectionTag)) {
+      html = html.replace(tripInspectionTag, `${tripInspectionTag}\n  <script src="${TRIP_LOG_DESKTOP_ASSET}"></script>`);
+    } else {
+      html = html.replace("</body>", `  <script src="${TRIP_LOG_DESKTOP_ASSET}"></script>\n</body>`);
     }
   }
 
