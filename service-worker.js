@@ -1,4 +1,4 @@
-const CACHE_NAME = "mileage-logger-report-fixes-v90";
+const CACHE_NAME = "mileage-logger-report-fixes-v91";
 const ACTIVE_JOBS_MANAGEMENT_ASSET = "./active-jobs-management.js?v=xlsx-self-closing-cells-1";
 const ACTIVE_JOBS_ACTIVITY_EXPORT_FIX_ASSET = "./active-jobs-activity-export-fix.js?v=activity-feed-2";
 const ACTIVE_JOBS_IMPORT_AJ_IDENTITY_FIX_ASSET = "./active-jobs-import-aj-identity-fix.js?v=aj-identity-1";
@@ -7,12 +7,13 @@ const LAST_ODOMETER_FIX_ASSET = "./last-odometer-derived-fix.js?v=derived-odomet
 const TRIP_INSPECTION_LINKS_ASSET = "./trip-inspection-links.js?v=trip-inspection-links-2";
 const TRIP_LOG_DESKTOP_ASSET = "./trip-log-desktop.js?v=responsive-log-2";
 const WORD_PHOTO_FIT_ASSET = "./word-photo-fit-fix.js?v=word-photo-fit-2";
+const INSPECTION_ACTIVITY_RULES_ASSET = "./inspection-activity-rules.js?v=structural-pmi-1";
 const REPORT_EXPORT_FIX_ASSET = "./report-export-fixes.js?v=s-and-b-report-fixes-1";
 const PHOTO_INDENT_FIX_ASSET = "./photo-indent-fix.js?v=s-and-b-photo-indent-2";
 const PHOTO_CLOUD_ASSET = "./photo-cloud-sync.js?v=cloud-photos-2";
 const AUTO_REPORT_TEXT_ASSET = "./auto-report-text.js?v=phrase-library-1";
 const COATING_SYSTEM_LABEL_FIX_ASSET = "./coating-system-label-fix.js?v=coating-system-labels-1";
-const INDEX_ASSET = "./index.html?v=report-fixes-18";
+const INDEX_ASSET = "./index.html?v=report-fixes-19";
 const APP_FILES = [
   "./",
   INDEX_ASSET,
@@ -23,6 +24,7 @@ const APP_FILES = [
   "./app.js?v=full-upgrade-list-1",
   "./inspections.js?v=full-upgrade-list-1",
   WORD_PHOTO_FIT_ASSET,
+  INSPECTION_ACTIVITY_RULES_ASSET,
   TRIP_INSPECTION_LINKS_ASSET,
   TRIP_LOG_DESKTOP_ASSET,
   "./workflow-queues.js?v=full-upgrade-list-1",
@@ -84,6 +86,15 @@ async function injectRuntimeLoaders(response) {
       html = html.replace(inspectionsTag, `${inspectionsTag}\n  <script src="${WORD_PHOTO_FIT_ASSET}"></script>`);
     } else {
       html = html.replace("</body>", `  <script src="${WORD_PHOTO_FIT_ASSET}"></script>\n</body>`);
+    }
+  }
+
+  if (!html.includes("inspection-activity-rules.js")) {
+    const wordPhotoTag = `<script src="${WORD_PHOTO_FIT_ASSET}"></script>`;
+    if (html.includes(wordPhotoTag)) {
+      html = html.replace(wordPhotoTag, `${wordPhotoTag}\n  <script src="${INSPECTION_ACTIVITY_RULES_ASSET}"></script>`);
+    } else {
+      html = html.replace("</body>", `  <script src="${INSPECTION_ACTIVITY_RULES_ASSET}"></script>\n</body>`);
     }
   }
 
