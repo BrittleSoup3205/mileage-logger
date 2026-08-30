@@ -145,18 +145,7 @@
     return true;
   }
 
-  function generatedDescription(inspection, api) {
-    const generated = String(inspection?.generatedReportLanguage || "").trim();
-    if (!generated) return "";
-    try {
-      const sections = api?.reportSectionText?.({ ...inspection, summary: "" });
-      return String(sections?.description || generated).trim();
-    } catch (_) {
-      return generated;
-    }
-  }
-
-  function patchSAndBReport(bytes, inspection, api) {
+  function patchSAndBReport(bytes) {
     if (!window.fflate) return bytes;
     const files = window.fflate.unzipSync(new Uint8Array(bytes));
     const documentBytes = files["word/document.xml"];
@@ -169,9 +158,6 @@
     if (documentXml.getElementsByTagName("parsererror")[0]) {
       throw new Error("The generated S&B Word report could not be finalized.");
     }
-
-    const description = generatedDescription(inspection, api);
-    if (description) setParagraphAfterLabel(documentXml, "DESCRIPTION:", description);
 
     Array.from(documentXml.getElementsByTagName("*")).forEach((element) => {
       if (element.getAttribute("cx") === S_AND_B_OLD_PHOTO_CX && element.getAttribute("cy") === S_AND_B_OLD_PHOTO_CY) {
@@ -252,7 +238,11 @@
     }
 
     const bytes = await api.buildSAndBInspectionDocx(template, inspection, photos, filename);
-    return { filename, bytes: patchSAndBReport(bytes, inspection, api) };
+    let finalized = patchSAndBReport(bytes);
+    if (window.MileageReportHeaderAutofill?.patchReport) {
+      finalized = window.MileageReportHeaderAutofill.patchReport(finalized, inspection);
+    }
+    return { filename, bytes: finalized };
   }
 
   async function exportWord(inspectionId, button) {
