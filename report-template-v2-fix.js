@@ -140,7 +140,7 @@
     return null;
   }
 
-  function setRunColor(run, color = "000000") {
+  function setRunColor(run) {
     if (!run) return;
     const doc = run.ownerDocument;
     let rPr = Array.from(run.childNodes).find((node) => node.nodeType === 1 && node.localName === "rPr");
@@ -148,13 +148,13 @@
       rPr = doc.createElementNS(WORD_NS, "w:rPr");
       run.insertBefore(rPr, run.firstChild);
     }
-    let color = descendants(rPr, "color")[0];
-    if (!color) {
-      color = doc.createElementNS(WORD_NS, "w:color");
-      rPr.appendChild(color);
+    let colorNode = descendants(rPr, "color")[0];
+    if (!colorNode) {
+      colorNode = doc.createElementNS(WORD_NS, "w:color");
+      rPr.appendChild(colorNode);
     }
-    color.setAttributeNS(WORD_NS, "w:val", "000000");
-    color.setAttribute("w:val", "000000");
+    colorNode.setAttributeNS(WORD_NS, "w:val", "000000");
+    colorNode.setAttribute("w:val", "000000");
   }
 
   function setParagraphText(paragraph, value, black = false) {
