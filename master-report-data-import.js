@@ -5,7 +5,9 @@
   const ACTIVE_SHEET = "Active Jobs";
   const FACILITY_SHEET = "Facility Profiles";
   let pending = null;
-  let applyPending = false;
+  let applyRequested = false;
+  let baselineImportIds = new Set();
+  let pollTimer = null;
   let enriching = false;
 
   const text = (value) => value === null || value === undefined ? "" : String(value);
@@ -13,12 +15,24 @@
   const key = (value) => clean(value).toLowerCase().replace(/\s+/g, " ");
 
   function readState() {
-    try { return JSON.parse(localStorage.getItem(STATE_KEY) || "{}"); }
-    catch (_) { return {}; }
+    try {
+      const state = JSON.parse(localStorage.getItem(STATE_KEY) || "{}");
+      state.activeJobs = Array.isArray(state.activeJobs) ? state.activeJobs : [];
+      state.facilityProfiles = Array.isArray(state.facilityProfiles) ? state.facilityProfiles : [];
+      state.activeJobImports = Array.isArray(state.activeJobImports) ? state.activeJobImports : [];
+      return state;
+    } catch (_) {
+      return { activeJobs: [], facilityProfiles: [], activeJobImports: [] };
+    }
   }
 
   function writeState(state) {
+    if (window.MileageActiveJobsManagement?.writeState) {
+      window.MileageActiveJobsManagement.writeState(state);
+      return;
+    }
     localStorage.setItem(STATE_KEY, JSON.stringify(state));
+    window.dispatchEvent(new CustomEvent("mileage:state-changed", { detail: { source: "master-report-data-import" } }));
   }
 
   function decodeXml(value) {
@@ -83,7 +97,7 @@
   }
 
   function workbookSheets(bytes) {
-    if (!window.fflate?.unzipSync || !window.fflate?.strFromU8) return {};
+    if (!window.fflate?.unzipSync || !window.fflate?.strFromU8) throw new Error("The XLSX reader is unavailable.");
     const entries = window.fflate.unzipSync(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes));
     const xml = (path) => entries[path] ? window.fflate.strFromU8(entries[path]) : "";
     const workbookXml = xml("xl/workbook.xml");
@@ -112,8 +126,7 @@
       return requiredHeaders.every((header) => headers.includes(key(header)));
     });
     if (headerIndex < 0) return null;
-    const headers = rows[headerIndex].map((value) => clean(value));
-    return { headers, rows: rows.slice(headerIndex + 1) };
+    return { headers: rows[headerIndex].map((value) => clean(value)), rows: rows.slice(headerIndex + 1) };
   }
 
   function columnMap(headers) {
@@ -124,8 +137,7 @@
 
   function valueAt(row, columns, names) {
     for (const name of names) {
-      if (!columns.has(key(name))) continue;
-      return clean(row[columns.get(key(name))]);
+      if (columns.has(key(name))) return clean(row[columns.get(key(name))]);
     }
     return undefined;
   }
@@ -175,16 +187,11 @@
       shopFacilityName: ["Shop / Facility Name", "Shop Facility Name"],
       normalInspectionLocation: ["Normal Inspection Location", "Inspection Location"],
       streetAddress: ["Street Address", "Address"],
-      city: ["City"],
-      state: ["State"],
-      zip: ["ZIP", "Zip Code"],
-      phone: ["Phone", "Phone Number"],
-      primaryContact: ["Primary Contact", "Default Contact"],
-      email: ["Email", "Default Email"],
-      aliases: ["Aliases"],
+      city: ["City"], state: ["State"], zip: ["ZIP", "Zip Code"],
+      phone: ["Phone", "Phone Number"], primaryContact: ["Primary Contact", "Default Contact"],
+      email: ["Email", "Default Email"], aliases: ["Aliases"],
       normalWorkingHours: ["Normal Working Hours", "Working Hours"],
-      inspectionDefaults: ["Inspection Defaults"],
-      reportDefaults: ["Report Defaults"],
+      inspectionDefaults: ["Inspection Defaults"], reportDefaults: ["Report Defaults"],
       facilityNotes: ["Notes", "Facility Notes"]
     };
     return table.rows.map((row) => {
@@ -211,11 +218,18 @@
     };
   }
 
+  function latestImportIsNew(state) {
+    return (state.activeJobImports || []).some((entry) => entry?.id && !baselineImportIds.has(entry.id));
+  }
+
+  function updateStatus(message) {
+    const status = document.getElementById("activeJobsImportStatus");
+    if (status) status.textContent = message;
+  }
+
   function applyEnrichment() {
-    if (!pending || enriching) return;
+    if (!pending || enriching) return false;
     const state = readState();
-    state.activeJobs = Array.isArray(state.activeJobs) ? state.activeJobs : [];
-    state.facilityProfiles = Array.isArray(state.facilityProfiles) ? state.facilityProfiles : [];
     const now = new Date().toISOString();
     let jobsUpdated = 0;
     let profilesUpdated = 0;
@@ -236,60 +250,90 @@
         state.facilityProfiles.push(profile);
       }
       Object.entries(source).forEach(([field, value]) => {
-        if (field === "id") return;
-        profile[field] = value;
+        if (field !== "id") profile[field] = value;
       });
       profile.modifiedISO = now;
       profilesUpdated += 1;
     });
 
-    if (!jobsUpdated && !profilesUpdated) {
-      pending = null;
-      applyPending = false;
-      return;
-    }
-
     enriching = true;
     try { writeState(state); }
     finally { enriching = false; }
-    const status = document.getElementById("activeJobsImportStatus");
-    if (status) {
-      const parts = [];
-      if (jobsUpdated) parts.push(`${jobsUpdated} Active Job report-data row${jobsUpdated === 1 ? "" : "s"}`);
-      if (profilesUpdated) parts.push(`${profilesUpdated} Facility Profile${profilesUpdated === 1 ? "" : "s"}`);
-      status.textContent = `${pending.sourceFilename}: imported ${parts.join(" and ")}.`;
-    }
+
+    const parts = [];
+    if (jobsUpdated) parts.push(`${jobsUpdated} Active Job report-data row${jobsUpdated === 1 ? "" : "s"}`);
+    if (profilesUpdated) parts.push(`${profilesUpdated} Facility Profile${profilesUpdated === 1 ? "" : "s"}`);
+    updateStatus(`${pending.sourceFilename}: imported ${parts.length ? parts.join(" and ") : "no additional report data"}.`);
+
     const toast = document.getElementById("toast");
     if (toast) {
       toast.textContent = "Active Jobs report fields and Facility Profiles updated.";
       toast.classList.remove("hidden");
       setTimeout(() => toast.classList.add("hidden"), 3500);
     }
+
     pending = null;
-    applyPending = false;
-    window.dispatchEvent(new CustomEvent("mileage:state-changed", { detail: { source: "master-report-data-import" } }));
+    applyRequested = false;
+    baselineImportIds = new Set();
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = null;
+    return true;
+  }
+
+  function startApplyPoll() {
+    if (pollTimer) clearInterval(pollTimer);
+    let attempts = 0;
+    pollTimer = setInterval(() => {
+      attempts += 1;
+      if (!applyRequested) {
+        clearInterval(pollTimer); pollTimer = null; return;
+      }
+      if (pending && latestImportIsNew(readState())) {
+        clearInterval(pollTimer); pollTimer = null;
+        setTimeout(applyEnrichment, 0);
+        return;
+      }
+      if (attempts >= 60) {
+        clearInterval(pollTimer); pollTimer = null;
+        if (pending) applyEnrichment();
+      }
+    }, 100);
   }
 
   document.addEventListener("change", (event) => {
     if (event.target?.id !== "activeJobsWorkbookInput") return;
     const file = event.target.files?.[0];
     if (!file) return;
-    parseFile(file).then((result) => { pending = result; }).catch((error) => {
+    const state = readState();
+    baselineImportIds = new Set((state.activeJobImports || []).map((entry) => entry?.id).filter(Boolean));
+    pending = null;
+    applyRequested = false;
+    parseFile(file).then((result) => {
+      pending = result;
+      if (applyRequested) startApplyPoll();
+    }).catch((error) => {
       console.warn("Could not read report fields / Facility Profiles from the Active Jobs Master:", error);
       pending = null;
+      updateStatus(`Report-data import warning: ${error.message}`);
     });
   }, true);
 
   document.addEventListener("click", (event) => {
-    if (event.target.closest?.("#applyActiveJobsUpdateBtn")) applyPending = true;
+    if (event.target.closest?.("#applyActiveJobsUpdateBtn")) {
+      applyRequested = true;
+      startApplyPoll();
+    }
     if (event.target.closest?.("#cancelActiveJobsUpdateBtn")) {
       pending = null;
-      applyPending = false;
+      applyRequested = false;
+      baselineImportIds = new Set();
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = null;
     }
   }, true);
 
   window.addEventListener("mileage:state-changed", () => {
-    if (applyPending && pending && !enriching) setTimeout(applyEnrichment, 0);
+    if (applyRequested && pending && latestImportIsNew(readState())) setTimeout(applyEnrichment, 0);
   });
 
   window.MileageMasterReportDataImport = Object.freeze({ parseFile, applyEnrichment });
