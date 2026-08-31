@@ -1,8 +1,8 @@
-const CACHE_NAME = "mileage-logger-report-fixes-v95";
+const CACHE_NAME = "mileage-logger-report-fixes-v96";
 const ACTIVE_JOBS_MANAGEMENT_ASSET = "./active-jobs-management.js?v=xlsx-self-closing-cells-1";
 const ACTIVE_JOBS_ACTIVITY_EXPORT_FIX_ASSET = "./active-jobs-activity-export-fix.js?v=activity-feed-2";
 const ACTIVE_JOBS_IMPORT_AJ_IDENTITY_FIX_ASSET = "./active-jobs-import-aj-identity-fix.js?v=aj-identity-1";
-const MASTER_REPORT_DATA_IMPORT_ASSET = "./master-report-data-import.js?v=report-data-1";
+const MASTER_REPORT_DATA_IMPORT_ASSET = "./master-report-data-import.js?v=report-data-2";
 const SYNC_VERIFIED_REPAIR_ASSET = "./sync-verified-repair-v2.js?v=verified-sync-2";
 const LAST_ODOMETER_FIX_ASSET = "./last-odometer-derived-fix.js?v=derived-odometer-1";
 const TRIP_INSPECTION_LINKS_ASSET = "./trip-inspection-links.js?v=trip-inspection-links-2";
@@ -11,13 +11,13 @@ const WORD_PHOTO_FIT_ASSET = "./word-photo-fit-fix.js?v=word-photo-fit-2";
 const INSPECTION_ACTIVITY_RULES_ASSET = "./inspection-activity-rules.js?v=structural-pmi-1";
 const REPORT_HEADER_AUTOFILL_ASSET = "./report-header-autofill.js?v=report-header-1";
 const REPORT_TEMPLATE_V2_FIX_ASSET = "./report-template-v2-fix.js?v=revised-template-1";
-const REPORT_TEMPLATE_FINAL_FIX_ASSET = "./report-template-final-fix.js?v=revised-template-final-1";
+const REPORT_TEMPLATE_FINAL_FIX_ASSET = "./report-template-final-fix.js?v=revised-template-final-2";
 const REPORT_EXPORT_FIX_ASSET = "./report-export-fixes.js?v=s-and-b-report-fixes-2";
 const PHOTO_INDENT_FIX_ASSET = "./photo-indent-fix.js?v=s-and-b-photo-indent-2";
 const PHOTO_CLOUD_ASSET = "./photo-cloud-sync.js?v=cloud-photos-2";
 const AUTO_REPORT_TEXT_ASSET = "./auto-report-text.js?v=phrase-library-1";
 const COATING_SYSTEM_LABEL_FIX_ASSET = "./coating-system-label-fix.js?v=coating-system-labels-1";
-const INDEX_ASSET = "./index.html?v=report-fixes-23";
+const INDEX_ASSET = "./index.html?v=report-fixes-24";
 const APP_FILES = [
   "./",
   INDEX_ASSET,
