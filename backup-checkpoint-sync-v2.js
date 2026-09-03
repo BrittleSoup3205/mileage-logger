@@ -18,6 +18,18 @@
   const loadSession = () => parse(localStorage.getItem(SESSION_KEY), null);
   const saveSession = (session) => localStorage.setItem(SESSION_KEY, JSON.stringify(session));
 
+  function currentTripCount(state) {
+    if (!Array.isArray(state?.trips)) return 0;
+    const ids = new Set();
+    let anonymous = 0;
+    state.trips.forEach((trip) => {
+      const id = text(trip?.id);
+      if (id) ids.add(id);
+      else anonymous += 1;
+    });
+    return ids.size + anonymous;
+  }
+
   async function validSession() {
     let session = loadSession();
     if (!session?.access_token || !session?.refresh_token) return null;
@@ -54,9 +66,12 @@
     const state = parse(localStorage.getItem(STATE_KEY), null);
     const backup = state?.backup || {};
     if (!text(backup.lastConfirmedISO)) return null;
+    const tripCount = currentTripCount(state);
+    const backupCount = Math.max(0, Number(backup.lastConfirmedTripCount || 0));
+    if (backupCount !== tripCount) return null;
     return {
       lastConfirmedISO: text(backup.lastConfirmedISO),
-      lastConfirmedTripCount: Math.max(0, Number(backup.lastConfirmedTripCount || 0)),
+      lastConfirmedTripCount: backupCount,
       lastFilename: text(backup.lastFilename)
     };
   }
@@ -80,22 +95,31 @@
     if (!remote?.lastConfirmedISO) return;
     const state = parse(localStorage.getItem(STATE_KEY), null);
     if (!state) return;
+    const tripCount = currentTripCount(state);
+    const remoteCount = Math.max(0, Number(remote.lastConfirmedTripCount || 0));
+    if (remoteCount !== tripCount) return;
+
     state.backup = state.backup && typeof state.backup === "object" ? state.backup : {};
     const remoteTime = Date.parse(remote.lastConfirmedISO) || 0;
     const localTime = Date.parse(state.backup.lastConfirmedISO || "") || 0;
+    const localCount = Math.max(0, Number(state.backup.lastConfirmedTripCount || 0));
+    const localValid = localCount === tripCount;
     const required = Date.parse(state.backup.lastRequiredISO || "") || 0;
     let changed = false;
-    if (remoteTime > localTime || (remoteTime === localTime && Number(remote.lastConfirmedTripCount || 0) > Number(state.backup.lastConfirmedTripCount || 0))) {
+
+    if (!localValid || remoteTime > localTime || (remoteTime === localTime && remoteCount > localCount)) {
       state.backup.lastConfirmedISO = remote.lastConfirmedISO;
-      state.backup.lastConfirmedTripCount = Math.max(0, Number(remote.lastConfirmedTripCount || 0));
+      state.backup.lastConfirmedTripCount = remoteCount;
       state.backup.lastFilename = text(remote.lastFilename);
       changed = true;
     }
+
     if (remoteTime >= required && (Number(state.backup.pendingTripCount || 0) > 0 || Number(state.backup.pendingChangeCount || 0) > 0)) {
       state.backup.pendingTripCount = 0;
       state.backup.pendingChangeCount = 0;
       changed = true;
     }
+
     if (!changed) return;
     localStorage.setItem(STATE_KEY, JSON.stringify(state));
     window.dispatchEvent(new CustomEvent("mileage:state-changed", { detail: { source: "backup-checkpoint-v2" } }));
