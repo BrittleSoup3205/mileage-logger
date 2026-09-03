@@ -1,4 +1,4 @@
-const CACHE_NAME = "mileage-logger-report-fixes-v99";
+const CACHE_NAME = "mileage-logger-report-fixes-v100";
 
 const ACTIVE_JOBS_MANAGEMENT_ASSET = "./active-jobs-management.js?v=xlsx-self-closing-cells-1";
 const ACTIVE_JOBS_ACTIVITY_EXPORT_FIX_ASSET = "./active-jobs-activity-export-fix.js?v=activity-feed-2";
@@ -6,6 +6,7 @@ const ACTIVE_JOBS_IMPORT_AJ_IDENTITY_FIX_ASSET = "./active-jobs-import-aj-identi
 const MASTER_REPORT_DATA_IMPORT_ASSET = "./master-report-data-import.js?v=report-data-2";
 const MASTER_REPORT_DATA_CAPTURE_FIX_ASSET = "./master-report-data-capture-fix.js?v=report-data-capture-1";
 const SYNC_ENGINE_ASSET = "./sync-engine.js?v=authoritative-sync-2";
+const INSPECTION_DELETE_SYNC_FIX_ASSET = "./inspection-delete-sync-fix.js?v=explicit-delete-1";
 const LAST_ODOMETER_FIX_ASSET = "./last-odometer-derived-fix.js?v=derived-odometer-1";
 const TRIP_INSPECTION_LINKS_ASSET = "./trip-inspection-links.js?v=trip-inspection-links-2";
 const TRIP_LOG_DESKTOP_ASSET = "./trip-log-desktop.js?v=responsive-log-2";
@@ -21,7 +22,7 @@ const PHOTO_INDENT_FIX_ASSET = "./photo-indent-fix.js?v=s-and-b-photo-indent-2";
 const PHOTO_CLOUD_ASSET = "./photo-cloud-sync.js?v=cloud-photos-2";
 const AUTO_REPORT_TEXT_ASSET = "./auto-report-text.js?v=phrase-library-1";
 const COATING_SYSTEM_LABEL_FIX_ASSET = "./coating-system-label-fix.js?v=coating-system-labels-1";
-const INDEX_ASSET = "./index.html?v=report-fixes-27";
+const INDEX_ASSET = "./index.html?v=report-fixes-28";
 
 const APP_FILES = [
   "./",
@@ -43,6 +44,7 @@ const APP_FILES = [
   TRIP_LOG_DESKTOP_ASSET,
   "./workflow-queues.js?v=full-upgrade-list-1",
   SYNC_ENGINE_ASSET,
+  INSPECTION_DELETE_SYNC_FIX_ASSET,
   "./media-store.js?v=visit-workspace-5",
   "./active-jobs-data.js?v=visit-workspace-5",
   ACTIVE_JOBS_MANAGEMENT_ASSET,
@@ -185,6 +187,7 @@ async function injectRuntimeLoaders(response) {
       else html = appendScript(html, SYNC_ENGINE_ASSET);
     }
   }
+  html = injectAfter(html, scriptTag(SYNC_ENGINE_ASSET), INSPECTION_DELETE_SYNC_FIX_ASSET);
 
   const mediaTag = '<script src="./media-store.js?v=visit-workspace-5"></script>';
   if (!html.includes("report-export-fixes.js")) {
