@@ -1,11 +1,11 @@
-const CACHE_NAME = "mileage-logger-report-fixes-v98";
+const CACHE_NAME = "mileage-logger-report-fixes-v99";
 
 const ACTIVE_JOBS_MANAGEMENT_ASSET = "./active-jobs-management.js?v=xlsx-self-closing-cells-1";
 const ACTIVE_JOBS_ACTIVITY_EXPORT_FIX_ASSET = "./active-jobs-activity-export-fix.js?v=activity-feed-2";
 const ACTIVE_JOBS_IMPORT_AJ_IDENTITY_FIX_ASSET = "./active-jobs-import-aj-identity-fix.js?v=aj-identity-1";
 const MASTER_REPORT_DATA_IMPORT_ASSET = "./master-report-data-import.js?v=report-data-2";
 const MASTER_REPORT_DATA_CAPTURE_FIX_ASSET = "./master-report-data-capture-fix.js?v=report-data-capture-1";
-const SYNC_ENGINE_ASSET = "./sync-engine.js?v=authoritative-sync-1";
+const SYNC_ENGINE_ASSET = "./sync-engine.js?v=authoritative-sync-2";
 const LAST_ODOMETER_FIX_ASSET = "./last-odometer-derived-fix.js?v=derived-odometer-1";
 const TRIP_INSPECTION_LINKS_ASSET = "./trip-inspection-links.js?v=trip-inspection-links-2";
 const TRIP_LOG_DESKTOP_ASSET = "./trip-log-desktop.js?v=responsive-log-2";
@@ -21,7 +21,7 @@ const PHOTO_INDENT_FIX_ASSET = "./photo-indent-fix.js?v=s-and-b-photo-indent-2";
 const PHOTO_CLOUD_ASSET = "./photo-cloud-sync.js?v=cloud-photos-2";
 const AUTO_REPORT_TEXT_ASSET = "./auto-report-text.js?v=phrase-library-1";
 const COATING_SYSTEM_LABEL_FIX_ASSET = "./coating-system-label-fix.js?v=coating-system-labels-1";
-const INDEX_ASSET = "./index.html?v=report-fixes-26";
+const INDEX_ASSET = "./index.html?v=report-fixes-27";
 
 const APP_FILES = [
   "./",
@@ -93,6 +93,61 @@ function appendScript(html, asset) {
   return html.replace("</body>", `  ${scriptTag(asset)}\n</body>`);
 }
 
+function hardenSyncEngineSource(source) {
+  const oldScanBlock = `      } else if (existing.hash !== hash || existing.tombstone) {
+        if (!options.remoteApplied) {
+          existing.modifiedAt = timestamp;
+          existing.syncedAt = Number(existing.syncedAt || 0);
+        }
+        existing.hash = hash;
+        existing.tombstone = false;
+        existing.deletionSource = "";
+      }`;
+  const newScanBlock = `      } else if (existing.tombstone) {
+        // Preserve tombstone metadata until cloud reconciliation decides whether
+        // a locally present copy is stale or genuinely newer.
+      } else if (existing.hash !== hash) {
+        existing.modifiedAt = timestamp;
+        existing.syncedAt = Number(existing.syncedAt || 0);
+        existing.hash = hash;
+        existing.tombstone = false;
+        existing.deletionSource = "";
+      }`;
+
+  const oldMergeAnchor = `      const localHash = hashValue(localRecord.payload);
+      if (localHash === remoteHash) {`;
+  const newMergeAnchor = `      const localHash = hashValue(localRecord.payload);
+
+      // The active-trip singleton is reused for every trip. If another device
+      // ended/cancelled this trip after it began, its newer cloud tombstone wins.
+      // A truly new active trip that began after the tombstone remains local-dirty.
+      if (remote.record_type === "active_trip" && remote.record_id === "current" && remote.tombstone) {
+        const localStart = Date.parse(localRecord.payload?.startISO || "") || 0;
+        if (!localStart || remoteTime >= localStart) {
+          applyRemoteRecord(state, remote);
+          setMetaFromRemote(meta, key, remote);
+          changed = true;
+          localRecords = extractRecords(state);
+        } else {
+          meta.records[key] = {
+            hash: localHash,
+            modifiedAt: localStart,
+            syncedAt: remoteTime,
+            tombstone: false,
+            deletionSource: ""
+          };
+        }
+        continue;
+      }
+
+      if (localHash === remoteHash) {`;
+
+  let hardened = source;
+  if (hardened.includes(oldScanBlock)) hardened = hardened.replace(oldScanBlock, newScanBlock);
+  if (hardened.includes(oldMergeAnchor)) hardened = hardened.replace(oldMergeAnchor, newMergeAnchor);
+  return hardened;
+}
+
 async function injectRuntimeLoaders(response) {
   if (!response) return response;
   const contentType = response.headers.get("content-type") || "";
@@ -122,9 +177,13 @@ async function injectRuntimeLoaders(response) {
   html = injectAfter(html, scriptTag(ACTIVE_JOBS_IMPORT_AJ_IDENTITY_FIX_ASSET), MASTER_REPORT_DATA_IMPORT_ASSET);
 
   const legacySyncTag = '<script src="./sync-engine.js?v=full-upgrade-list-1"></script>';
-  if (!html.includes("sync-engine.js?v=authoritative-sync-1")) {
+  if (!html.includes("sync-engine.js?v=authoritative-sync-2")) {
     if (html.includes(legacySyncTag)) html = html.replace(legacySyncTag, scriptTag(SYNC_ENGINE_ASSET));
-    else html = appendScript(html, SYNC_ENGINE_ASSET);
+    else {
+      const priorAuthoritative = '<script src="./sync-engine.js?v=authoritative-sync-1"></script>';
+      if (html.includes(priorAuthoritative)) html = html.replace(priorAuthoritative, scriptTag(SYNC_ENGINE_ASSET));
+      else html = appendScript(html, SYNC_ENGINE_ASSET);
+    }
   }
 
   const mediaTag = '<script src="./media-store.js?v=visit-workspace-5"></script>';
@@ -163,6 +222,27 @@ self.addEventListener("fetch", (event) => {
         const cached = await caches.match(event.request) || await caches.match(INDEX_ASSET) || await caches.match("./");
         return injectRuntimeLoaders(cached);
       }
+    })());
+    return;
+  }
+
+  if (requestUrl.pathname.endsWith("/sync-engine.js")) {
+    event.respondWith((async () => {
+      let response;
+      try {
+        response = await fetch(event.request, { cache: "reload" });
+        const cache = await caches.open(CACHE_NAME);
+        await cache.put(event.request, response.clone());
+      } catch (_) {
+        response = await caches.match(event.request) || await caches.match(SYNC_ENGINE_ASSET);
+      }
+      if (!response) return new Response("", { status: 503, statusText: "Sync engine unavailable" });
+      const source = hardenSyncEngineSource(await response.text());
+      return new Response(source, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers
+      });
     })());
     return;
   }
