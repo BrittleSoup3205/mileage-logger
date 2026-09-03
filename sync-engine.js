@@ -6,13 +6,26 @@
   const SESSION_KEY = "mileage_logger_sync_session_v1";
   const META_KEY = "mileage_logger_sync_meta_v1";
   const DEVICE_ID_KEY = "mileage_logger_sync_device_id_v1";
-  const SYNC_INTERVAL_MS = 20000;
+  const SYNC_INTERVAL_MS = 30000;
   const DEFAULT_PROJECT_URL = "https://osvubxisjfplnljabvrn.supabase.co";
   const DEFAULT_PUBLISHABLE_KEY = "sb_publishable_n3tp6B8y5abgPN1r7ITUYA_cMuE7AlP";
-  const RECORD_TYPES = new Set(["active_trip", "trip", "inspection", "timesheet_entry", "timesheet_week", "active_job", "facility_profile", "active_job_import", "preferences"]);
+  const RECORD_TYPES = new Set([
+    "active_trip",
+    "trip",
+    "inspection",
+    "timesheet_entry",
+    "timesheet_week",
+    "active_job",
+    "facility_profile",
+    "active_job_import",
+    "active_job_proposal",
+    "preferences"
+  ]);
 
   let syncTimer = null;
+  let scheduledSyncTimer = null;
   let syncInFlight = false;
+  let syncRequested = false;
   let applyingRemote = false;
   let lastStatus = { state: "off", message: "Multi-device sync not configured." };
 
@@ -103,16 +116,22 @@
   function loadMeta() {
     const meta = readJSON(META_KEY, {});
     return {
+      version: 2,
       records: meta.records && typeof meta.records === "object" ? meta.records : {},
       lastSyncISO: String(meta.lastSyncISO || ""),
+      lastCheckedISO: String(meta.lastCheckedISO || ""),
+      lastMismatchKeys: Array.isArray(meta.lastMismatchKeys) ? meta.lastMismatchKeys.slice(0, 20) : [],
       conflicts: Array.isArray(meta.conflicts) ? meta.conflicts.slice(-20) : []
     };
   }
 
   function saveMeta(meta) {
     writeJSON(META_KEY, {
+      version: 2,
       records: meta.records || {},
       lastSyncISO: meta.lastSyncISO || "",
+      lastCheckedISO: meta.lastCheckedISO || "",
+      lastMismatchKeys: (meta.lastMismatchKeys || []).slice(0, 20),
       conflicts: (meta.conflicts || []).slice(-20)
     });
   }
@@ -121,8 +140,23 @@
     return readJSON(APP_STATE_KEY, null);
   }
 
+  function shapeState(state) {
+    state = state && typeof state === "object" ? state : {};
+    state.trips = Array.isArray(state.trips) ? state.trips : [];
+    state.settings = state.settings && typeof state.settings === "object" ? state.settings : {};
+    state.settings.inspections = Array.isArray(state.settings.inspections) ? state.settings.inspections : [];
+    state.workflow = state.workflow && typeof state.workflow === "object" ? state.workflow : {};
+    state.workflow.timesheetEntries = Array.isArray(state.workflow.timesheetEntries) ? state.workflow.timesheetEntries : [];
+    state.workflow.timesheetWeeks = state.workflow.timesheetWeeks && typeof state.workflow.timesheetWeeks === "object" ? state.workflow.timesheetWeeks : {};
+    state.activeJobs = Array.isArray(state.activeJobs) ? state.activeJobs : [];
+    state.facilityProfiles = Array.isArray(state.facilityProfiles) ? state.facilityProfiles : [];
+    state.activeJobImports = Array.isArray(state.activeJobImports) ? state.activeJobImports : [];
+    state.activeJobUpdateProposals = Array.isArray(state.activeJobUpdateProposals) ? state.activeJobUpdateProposals : [];
+    return state;
+  }
+
   function cloudBootstrapState() {
-    return {
+    return shapeState({
       activeTrip: null,
       trips: [],
       lastOdometer: "",
@@ -131,23 +165,26 @@
       workflow: { timesheetEntries: [], timesheetWeeks: {} },
       activeJobs: [],
       facilityProfiles: [],
-      activeJobImports: []
-    };
+      activeJobImports: [],
+      activeJobUpdateProposals: []
+    });
   }
 
-  function finishCloudBootstrap(state) {
-    const latestTrip = (Array.isArray(state.trips) ? state.trips : [])
+  function recalculateOdometer(state) {
+    const latest = [...(Array.isArray(state.trips) ? state.trips : [])]
       .filter((trip) => trip?.endOdometer !== undefined && trip?.endOdometer !== null && trip?.endOdometer !== "")
-      .sort((left, right) => String(right.endISO || "").localeCompare(String(left.endISO || "")))[0];
-    state.lastOdometer = latestTrip?.endOdometer ?? "";
-    return state;
+      .sort((left, right) => String(right.endISO || right.date || "").localeCompare(String(left.endISO || left.date || "")))[0];
+    const next = latest?.endOdometer ?? "";
+    if (String(state.lastOdometer ?? "") === String(next ?? "")) return false;
+    state.lastOdometer = next;
+    return true;
   }
 
-  function writeAppState(state) {
+  function writeAppState(state, source = "cloud-sync-v2") {
     applyingRemote = true;
     try {
       localStorage.setItem(APP_STATE_KEY, JSON.stringify(state));
-      window.dispatchEvent(new CustomEvent("mileage:state-changed", { detail: { source: "cloud-sync" } }));
+      window.dispatchEvent(new CustomEvent("mileage:state-changed", { detail: { source } }));
     } finally {
       setTimeout(() => { applyingRemote = false; }, 0);
     }
@@ -190,44 +227,34 @@
         vendorLocations: Array.isArray(settings.vendorLocations) ? settings.vendorLocations : [],
         inspectionIgnoredTripIds: Array.isArray(settings.inspectionIgnoredTripIds) ? settings.inspectionIgnoredTripIds : []
       },
-      workflow: {
-        mileageRate: workflow.mileageRate ?? ""
-      }
+      workflow: { mileageRate: workflow.mileageRate ?? "" }
     };
   }
 
-  function extractRecords(state) {
+  function extractRecords(rawState) {
+    const state = shapeState(rawState);
     const records = new Map();
-    if (!state) return records;
     if (state.activeTrip?.id) records.set(recordKey("active_trip", "current"), { type: "active_trip", id: "current", payload: state.activeTrip });
-    (Array.isArray(state.trips) ? state.trips : []).forEach((trip) => {
-      if (trip?.id) records.set(recordKey("trip", trip.id), { type: "trip", id: trip.id, payload: trip });
-    });
-    (Array.isArray(state.settings?.inspections) ? state.settings.inspections : []).forEach((inspection) => {
-      if (inspection?.id) records.set(recordKey("inspection", inspection.id), { type: "inspection", id: inspection.id, payload: inspection });
-    });
-    (Array.isArray(state.activeJobs) ? state.activeJobs : []).forEach((job) => {
-      if (job?.aj) records.set(recordKey("active_job", job.aj), { type: "active_job", id: job.aj, payload: job });
-    });
-    (Array.isArray(state.facilityProfiles) ? state.facilityProfiles : []).forEach((profile) => {
-      if (profile?.id) records.set(recordKey("facility_profile", profile.id), { type: "facility_profile", id: profile.id, payload: profile });
-    });
-    (Array.isArray(state.activeJobImports) ? state.activeJobImports : []).forEach((entry) => {
-      if (entry?.id) records.set(recordKey("active_job_import", entry.id), { type: "active_job_import", id: entry.id, payload: entry });
-    });
-    (Array.isArray(state.workflow?.timesheetEntries) ? state.workflow.timesheetEntries : []).forEach((entry) => {
-      if (entry?.id) records.set(recordKey("timesheet_entry", entry.id), { type: "timesheet_entry", id: entry.id, payload: entry });
-    });
-    Object.entries(state.workflow?.timesheetWeeks || {}).forEach(([week, value]) => {
-      records.set(recordKey("timesheet_week", week), { type: "timesheet_week", id: week, payload: value });
-    });
+    state.trips.forEach((item) => item?.id && records.set(recordKey("trip", item.id), { type: "trip", id: item.id, payload: item }));
+    state.settings.inspections.forEach((item) => item?.id && records.set(recordKey("inspection", item.id), { type: "inspection", id: item.id, payload: item }));
+    state.activeJobs.forEach((item) => item?.aj && records.set(recordKey("active_job", item.aj), { type: "active_job", id: item.aj, payload: item }));
+    state.facilityProfiles.forEach((item) => item?.id && records.set(recordKey("facility_profile", item.id), { type: "facility_profile", id: item.id, payload: item }));
+    state.activeJobImports.forEach((item) => item?.id && records.set(recordKey("active_job_import", item.id), { type: "active_job_import", id: item.id, payload: item }));
+    state.activeJobUpdateProposals.forEach((item) => item?.id && records.set(recordKey("active_job_proposal", item.id), { type: "active_job_proposal", id: item.id, payload: item }));
+    state.workflow.timesheetEntries.forEach((item) => item?.id && records.set(recordKey("timesheet_entry", item.id), { type: "timesheet_entry", id: item.id, payload: item }));
+    Object.entries(state.workflow.timesheetWeeks).forEach(([id, payload]) => records.set(recordKey("timesheet_week", id), { type: "timesheet_week", id, payload }));
     records.set(recordKey("preferences", "durable"), { type: "preferences", id: "durable", payload: durablePreferences(state) });
     return records;
   }
 
+  function authorizedLocalTombstone(item, type) {
+    if (!item?.tombstone) return false;
+    if (item.deletionSource === "explicit") return true;
+    return type === "active_trip" && item.deletionSource === "active-trip-cleared";
+  }
+
   function scanLocal(state, meta, options = {}) {
     const current = extractRecords(state);
-    const currentKeys = new Set(current.keys());
     const timestamp = Date.now();
 
     current.forEach((record, key) => {
@@ -238,7 +265,8 @@
           hash,
           modifiedAt: timestamp,
           syncedAt: options.seedNewAsSynced ? timestamp : 0,
-          tombstone: false
+          tombstone: false,
+          deletionSource: ""
         };
       } else if (existing.hash !== hash || existing.tombstone) {
         if (!options.remoteApplied) {
@@ -247,18 +275,29 @@
         }
         existing.hash = hash;
         existing.tombstone = false;
+        existing.deletionSource = "";
       }
     });
 
-    Object.entries(meta.records).forEach(([key, existing]) => {
-      const [type] = key.split(":", 1);
-      if (!RECORD_TYPES.has(type) || currentKeys.has(key) || existing.tombstone) return;
-      existing.hash = "__deleted__";
-      existing.tombstone = true;
-      existing.modifiedAt = timestamp;
-      existing.syncedAt = Number(existing.syncedAt || 0);
-    });
+    const activeTripKey = recordKey("active_trip", "current");
+    const activeTripMeta = meta.records[activeTripKey];
+    if (!current.has(activeTripKey) && activeTripMeta && !activeTripMeta.tombstone && !options.suppressActiveTripTombstone) {
+      activeTripMeta.hash = "__deleted__";
+      activeTripMeta.tombstone = true;
+      activeTripMeta.deletionSource = "active-trip-cleared";
+      activeTripMeta.modifiedAt = timestamp;
+      activeTripMeta.syncedAt = Number(activeTripMeta.syncedAt || 0);
+    }
+
     return current;
+  }
+
+  function replaceRecord(array, field, id, payload, deleted) {
+    const index = array.findIndex((item) => item?.[field] === id);
+    if (deleted) {
+      if (index >= 0) array.splice(index, 1);
+    } else if (index >= 0) array[index] = payload;
+    else array.push(payload);
   }
 
   function applyRemoteRecord(state, remote) {
@@ -271,77 +310,22 @@
       state.activeTrip = deleted ? null : payload;
       return;
     }
-
-    if (type === "trip") {
-      state.trips = Array.isArray(state.trips) ? state.trips : [];
-      const index = state.trips.findIndex((item) => item?.id === id);
-      if (deleted) {
-        if (index >= 0) state.trips.splice(index, 1);
-      } else if (index >= 0) state.trips[index] = payload;
-      else state.trips.push(payload);
-      return;
-    }
-
-    if (type === "active_job") {
-      state.activeJobs = Array.isArray(state.activeJobs) ? state.activeJobs : [];
-      const index = state.activeJobs.findIndex((item) => item?.aj === id);
-      if (deleted) {
-        if (index >= 0) state.activeJobs.splice(index, 1);
-      } else if (index >= 0) state.activeJobs[index] = payload;
-      else state.activeJobs.push(payload);
-      return;
-    }
-
-    if (type === "facility_profile") {
-      state.facilityProfiles = Array.isArray(state.facilityProfiles) ? state.facilityProfiles : [];
-      const index = state.facilityProfiles.findIndex((item) => item?.id === id);
-      if (deleted) {
-        if (index >= 0) state.facilityProfiles.splice(index, 1);
-      } else if (index >= 0) state.facilityProfiles[index] = payload;
-      else state.facilityProfiles.push(payload);
-      return;
-    }
-
+    if (type === "trip") return replaceRecord(state.trips, "id", id, payload, deleted);
+    if (type === "inspection") return replaceRecord(state.settings.inspections, "id", id, payload, deleted);
+    if (type === "active_job") return replaceRecord(state.activeJobs, "aj", id, payload, deleted);
+    if (type === "facility_profile") return replaceRecord(state.facilityProfiles, "id", id, payload, deleted);
     if (type === "active_job_import") {
-      state.activeJobImports = Array.isArray(state.activeJobImports) ? state.activeJobImports : [];
-      const index = state.activeJobImports.findIndex((item) => item?.id === id);
-      if (deleted) {
-        if (index >= 0) state.activeJobImports.splice(index, 1);
-      } else if (index >= 0) state.activeJobImports[index] = payload;
-      else state.activeJobImports.push(payload);
+      replaceRecord(state.activeJobImports, "id", id, payload, deleted);
       state.activeJobImports.sort((left, right) => String(right.importedISO || "").localeCompare(String(left.importedISO || "")));
       return;
     }
-
-    state.settings = state.settings && typeof state.settings === "object" ? state.settings : {};
-    if (type === "inspection") {
-      state.settings.inspections = Array.isArray(state.settings.inspections) ? state.settings.inspections : [];
-      const index = state.settings.inspections.findIndex((item) => item?.id === id);
-      if (deleted) {
-        if (index >= 0) state.settings.inspections.splice(index, 1);
-      } else if (index >= 0) state.settings.inspections[index] = payload;
-      else state.settings.inspections.push(payload);
-      return;
-    }
-
-    state.workflow = state.workflow && typeof state.workflow === "object" ? state.workflow : {};
-    if (type === "timesheet_entry") {
-      state.workflow.timesheetEntries = Array.isArray(state.workflow.timesheetEntries) ? state.workflow.timesheetEntries : [];
-      const index = state.workflow.timesheetEntries.findIndex((item) => item?.id === id);
-      if (deleted) {
-        if (index >= 0) state.workflow.timesheetEntries.splice(index, 1);
-      } else if (index >= 0) state.workflow.timesheetEntries[index] = payload;
-      else state.workflow.timesheetEntries.push(payload);
-      return;
-    }
-
+    if (type === "active_job_proposal") return replaceRecord(state.activeJobUpdateProposals, "id", id, payload, deleted);
+    if (type === "timesheet_entry") return replaceRecord(state.workflow.timesheetEntries, "id", id, payload, deleted);
     if (type === "timesheet_week") {
-      state.workflow.timesheetWeeks = state.workflow.timesheetWeeks && typeof state.workflow.timesheetWeeks === "object" ? state.workflow.timesheetWeeks : {};
       if (deleted) delete state.workflow.timesheetWeeks[id];
       else state.workflow.timesheetWeeks[id] = payload;
       return;
     }
-
     if (type === "preferences" && id === "durable" && !deleted && payload) {
       const settings = payload.settings || {};
       ["roundMiles", "autoCaptureGps", "maxGpsAccuracy", "differenceWarning"].forEach((field) => {
@@ -352,6 +336,17 @@
       });
       if (payload.workflow?.mileageRate !== undefined) state.workflow.mileageRate = payload.workflow.mileageRate;
     }
+  }
+
+  function setMetaFromRemote(meta, key, remote) {
+    const remoteTime = Date.parse(remote.modified_at || "") || Date.now();
+    meta.records[key] = {
+      hash: remote.tombstone ? "__deleted__" : hashValue(remote.payload),
+      modifiedAt: remoteTime,
+      syncedAt: remoteTime,
+      tombstone: Boolean(remote.tombstone),
+      deletionSource: remote.tombstone ? "cloud" : ""
+    };
   }
 
   function configReady(config = loadConfig()) {
@@ -365,29 +360,6 @@
   function isSecretKey(key) {
     const value = String(key || "").toLowerCase();
     return value.includes("service_role") || value.startsWith("sb_secret_");
-  }
-
-  async function request(path, options = {}) {
-    const config = loadConfig();
-    if (!config.projectUrl || !config.publishableKey) throw new Error("Sync project URL and publishable key are required.");
-    if (isSecretKey(config.publishableKey)) throw new Error("Do not use a service-role or secret key in Mileage Logger. Use the public/publishable key only.");
-
-    const headers = new Headers(options.headers || {});
-    headers.set("apikey", config.publishableKey);
-    if (options.auth !== false) {
-      const session = await validSession();
-      if (!session?.access_token) throw new Error("Sign in to Mileage Logger sync first.");
-      headers.set("Authorization", `Bearer ${session.access_token}`);
-    }
-    if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-    const response = await fetch(`${config.projectUrl}${path}`, { ...options, headers });
-    const text = await response.text();
-    const body = text ? safeJSONParse(text, text) : null;
-    if (!response.ok) {
-      const message = body?.msg || body?.message || body?.error_description || body?.error || `${response.status} ${response.statusText}`;
-      throw new Error(message);
-    }
-    return body;
   }
 
   async function validSession() {
@@ -412,6 +384,28 @@
     return session;
   }
 
+  async function request(path, options = {}) {
+    const config = loadConfig();
+    if (!config.projectUrl || !config.publishableKey) throw new Error("Sync project URL and publishable key are required.");
+    if (isSecretKey(config.publishableKey)) throw new Error("Do not use a service-role or secret key in Mileage Logger. Use the public/publishable key only.");
+    const headers = new Headers(options.headers || {});
+    headers.set("apikey", config.publishableKey);
+    if (options.auth !== false) {
+      const session = await validSession();
+      if (!session?.access_token) throw new Error("Sign in to Mileage Logger sync first.");
+      headers.set("Authorization", `Bearer ${session.access_token}`);
+    }
+    if (options.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
+    const response = await fetch(`${config.projectUrl}${path}`, { ...options, headers });
+    const text = await response.text();
+    const body = text ? safeJSONParse(text, text) : null;
+    if (!response.ok) {
+      const message = body?.msg || body?.message || body?.error_description || body?.error || `${response.status} ${response.statusText}`;
+      throw new Error(message);
+    }
+    return body;
+  }
+
   async function signIn(email, password) {
     const config = loadConfig();
     const response = await fetch(`${config.projectUrl}/auth/v1/token?grant_type=password`, {
@@ -423,7 +417,7 @@
     const body = text ? safeJSONParse(text, {}) : {};
     if (!response.ok) throw new Error(body?.error_description || body?.msg || "Could not sign in.");
     saveSession(body);
-    setStatus("ready", `Signed in as ${body.user?.email || email}.`);
+    setStatus("check", `Signed in as ${body.user?.email || email}. Verifying records…`);
     await syncNow({ reason: "sign-in" });
     return body;
   }
@@ -440,7 +434,7 @@
     if (!response.ok) throw new Error(body?.error_description || body?.msg || "Could not create the sync account.");
     if (body.access_token) {
       saveSession(body);
-      setStatus("ready", `Account created and signed in as ${body.user?.email || email}.`);
+      setStatus("check", `Account created. Verifying records for ${body.user?.email || email}…`);
       await syncNow({ reason: "signup" });
     } else {
       setStatus("warn", "Account created. Check your email if confirmation is required, then sign in.");
@@ -455,7 +449,7 @@
 
   async function fetchRemoteRecords() {
     const rows = await request("/rest/v1/mileage_sync_records?select=record_type,record_id,payload,modified_at,device_id,tombstone&order=modified_at.asc", { method: "GET" });
-    return Array.isArray(rows) ? rows : [];
+    return Array.isArray(rows) ? rows.filter((row) => RECORD_TYPES.has(row.record_type)) : [];
   }
 
   async function pushRows(rows) {
@@ -467,30 +461,208 @@
     });
   }
 
-  async function heartbeat(session, syncISO) {
+  async function heartbeat(session, seenISO, verifiedISO = "") {
     const config = loadConfig();
+    const row = {
+      user_id: session.user.id,
+      device_id: deviceId(),
+      device_label: config.deviceLabel,
+      platform: platformLabel(),
+      last_seen_at: seenISO
+    };
+    if (verifiedISO) row.last_sync_at = verifiedISO;
     await request("/rest/v1/mileage_sync_devices?on_conflict=user_id,device_id", {
       method: "POST",
       headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-      body: JSON.stringify([{
-        user_id: session.user.id,
-        device_id: deviceId(),
-        device_label: config.deviceLabel,
-        platform: platformLabel(),
-        last_seen_at: syncISO,
-        last_sync_at: syncISO
-      }])
+      body: JSON.stringify([row])
     });
   }
 
-  function conflictMessage(meta) {
-    const recent = (meta.conflicts || []).slice(-1)[0];
-    if (!recent) return "";
-    return ` Latest conflict: ${recent.type} ${recent.id}; ${recent.winner} copy kept.`;
+  function buildOutgoing(state, meta, session) {
+    const local = extractRecords(state);
+    const outgoing = [];
+    Object.entries(meta.records).forEach(([key, item]) => {
+      const separator = key.indexOf(":");
+      const type = key.slice(0, separator);
+      const id = key.slice(separator + 1);
+      if (!RECORD_TYPES.has(type)) return;
+      const localModified = Number(item.modifiedAt || 0);
+      const localSynced = Number(item.syncedAt || 0);
+      if (localModified <= localSynced) return;
+      if (item.tombstone) {
+        if (!authorizedLocalTombstone(item, type)) return;
+        outgoing.push({ user_id: session.user.id, record_type: type, record_id: id, payload: null, device_id: deviceId(), tombstone: true });
+        return;
+      }
+      const record = local.get(key);
+      if (!record) return;
+      outgoing.push({ user_id: session.user.id, record_type: type, record_id: id, payload: record.payload, device_id: deviceId(), tombstone: false });
+    });
+    return outgoing;
+  }
+
+  function updateMetaFromPush(meta, outgoing, pushedRows) {
+    const pushedByKey = new Map((Array.isArray(pushedRows) ? pushedRows : []).map((row) => [recordKey(row.record_type, row.record_id), row]));
+    outgoing.forEach((row) => {
+      const key = recordKey(row.record_type, row.record_id);
+      const item = meta.records[key];
+      if (!item) return;
+      const serverRow = pushedByKey.get(key);
+      const serverTime = Date.parse(serverRow?.modified_at || "") || Date.now();
+      item.modifiedAt = serverTime;
+      item.syncedAt = serverTime;
+      item.hash = row.tombstone ? "__deleted__" : hashValue(row.payload);
+      item.tombstone = Boolean(row.tombstone);
+      item.deletionSource = row.tombstone ? (item.deletionSource || "explicit") : "";
+    });
+  }
+
+  function compareStateToCloud(state, cloudRows) {
+    const local = extractRecords(state);
+    const cloudMap = new Map(cloudRows.map((row) => [recordKey(row.record_type, row.record_id), row]));
+    const mismatches = [];
+    cloudRows.forEach((row) => {
+      const key = recordKey(row.record_type, row.record_id);
+      const localRecord = local.get(key);
+      if (row.tombstone) {
+        if (localRecord) mismatches.push(key);
+      } else if (!localRecord || hashValue(localRecord.payload) !== hashValue(row.payload)) {
+        mismatches.push(key);
+      }
+    });
+    local.forEach((_, key) => {
+      const row = cloudMap.get(key);
+      if (!row || row.tombstone) mismatches.push(key);
+    });
+    const counts = {};
+    cloudRows.filter((row) => !row.tombstone).forEach((row) => {
+      counts[row.record_type] = (counts[row.record_type] || 0) + 1;
+    });
+    return { mismatches: [...new Set(mismatches)], counts };
+  }
+
+  function recordConflict(meta, remote, winner) {
+    meta.conflicts.push({
+      at: nowISO(),
+      type: remote.record_type,
+      id: remote.record_id,
+      localDevice: deviceId(),
+      remoteDevice: remote.device_id || "other device",
+      winner
+    });
+  }
+
+  function mergeCloudIntoLocal(state, meta, remoteRows, options = {}) {
+    let changed = false;
+    let localRecords = extractRecords(state);
+
+    for (const remote of remoteRows) {
+      const key = recordKey(remote.record_type, remote.record_id);
+      const remoteTime = Date.parse(remote.modified_at || "") || 0;
+      const remoteHash = remote.tombstone ? "__deleted__" : hashValue(remote.payload);
+      const localRecord = localRecords.get(key);
+      const localMeta = meta.records[key];
+
+      if (!localRecord) {
+        const explicitLocalDelete = localMeta && authorizedLocalTombstone(localMeta, remote.record_type) && Number(localMeta.modifiedAt || 0) > Number(localMeta.syncedAt || 0);
+        if (explicitLocalDelete) {
+          if (remoteTime >= Number(localMeta.modifiedAt || 0)) {
+            applyRemoteRecord(state, remote);
+            setMetaFromRemote(meta, key, remote);
+            changed = true;
+          }
+          continue;
+        }
+        if (!remote.tombstone) {
+          applyRemoteRecord(state, remote);
+          changed = true;
+        }
+        setMetaFromRemote(meta, key, remote);
+        localRecords = extractRecords(state);
+        continue;
+      }
+
+      const localHash = hashValue(localRecord.payload);
+      if (localHash === remoteHash) {
+        const existing = localMeta || {};
+        existing.hash = remoteHash;
+        existing.syncedAt = Math.max(Number(existing.syncedAt || 0), remoteTime);
+        existing.modifiedAt = Math.max(Number(existing.modifiedAt || 0), remoteTime);
+        existing.tombstone = Boolean(remote.tombstone);
+        existing.deletionSource = remote.tombstone ? "cloud" : "";
+        meta.records[key] = existing;
+        continue;
+      }
+
+      if (!localMeta || options.bootstrap) {
+        applyRemoteRecord(state, remote);
+        setMetaFromRemote(meta, key, remote);
+        changed = true;
+        localRecords = extractRecords(state);
+        continue;
+      }
+
+      const localModified = Number(localMeta.modifiedAt || 0);
+      const localSynced = Number(localMeta.syncedAt || 0);
+      const localDirty = localModified > localSynced;
+      const remoteChanged = remoteTime > localSynced;
+
+      if (localDirty && remoteChanged) {
+        const remoteWins = remoteTime >= localModified;
+        recordConflict(meta, remote, remoteWins ? "cloud/newer-device" : "this-device");
+        if (remoteWins) {
+          applyRemoteRecord(state, remote);
+          setMetaFromRemote(meta, key, remote);
+          changed = true;
+          localRecords = extractRecords(state);
+        }
+        continue;
+      }
+
+      if (!localDirty || (remoteChanged && remoteTime >= localModified)) {
+        applyRemoteRecord(state, remote);
+        setMetaFromRemote(meta, key, remote);
+        changed = true;
+        localRecords = extractRecords(state);
+      }
+    }
+
+    if (recalculateOdometer(state)) changed = true;
+    return changed;
+  }
+
+  async function finalReconcile(state, meta, session) {
+    let cloudRows = await fetchRemoteRecords();
+    let changed = mergeCloudIntoLocal(state, meta, cloudRows, { bootstrap: false });
+    if (changed) {
+      writeAppState(state, "cloud-sync-final-reconcile");
+      state = shapeState(readAppState());
+      scanLocal(state, meta, { remoteApplied: true, suppressActiveTripTombstone: true });
+    }
+
+    let outgoing = buildOutgoing(state, meta, session);
+    if (outgoing.length) {
+      const pushed = await pushRows(outgoing);
+      updateMetaFromPush(meta, outgoing, pushed);
+      cloudRows = await fetchRemoteRecords();
+    }
+
+    changed = mergeCloudIntoLocal(state, meta, cloudRows, { bootstrap: false });
+    if (changed) {
+      writeAppState(state, "cloud-sync-final-reconcile-2");
+      state = shapeState(readAppState());
+      scanLocal(state, meta, { remoteApplied: true, suppressActiveTripTombstone: true });
+    }
+
+    cloudRows = await fetchRemoteRecords();
+    return { state, cloudRows, check: compareStateToCloud(state, cloudRows) };
   }
 
   async function syncNow(options = {}) {
-    if (syncInFlight) return false;
+    if (syncInFlight) {
+      syncRequested = true;
+      return false;
+    }
     const config = loadConfig();
     if (!configReady(config)) {
       setStatus("off", "Multi-device sync not configured. Local/offline Mileage Logger still works normally.");
@@ -506,128 +678,66 @@
     }
 
     syncInFlight = true;
-    setStatus("syncing", options.reason === "manual" ? "Synchronizing now…" : "Synchronizing changes…");
+    syncRequested = false;
+    setStatus("syncing", options.reason === "manual" ? "Synchronizing and verifying now…" : "Synchronizing and verifying changes…");
+
     try {
       const session = await validSession();
       if (!session?.user?.id) throw new Error("Signed-in user information is unavailable.");
+      const seenISO = nowISO();
+      await heartbeat(session, seenISO, "");
+
       const storedStateMissing = localStorage.getItem(APP_STATE_KEY) === null;
       let state = readAppState();
       const meta = loadMeta();
-      const conflictCountBeforeSync = meta.conflicts.length;
-      const remoteRows = await fetchRemoteRecords();
-      const remoteByKey = new Map(remoteRows.map((row) => [recordKey(row.record_type, row.record_id), row]));
-      const cloudBootstrap = !state && storedStateMissing && remoteRows.some((row) => RECORD_TYPES.has(row.record_type));
+      const conflictCountBefore = meta.conflicts.length;
+      let remoteRows = await fetchRemoteRecords();
+      const cloudBootstrap = !state && storedStateMissing && remoteRows.some((row) => RECORD_TYPES.has(row.record_type) && !row.tombstone);
       if (!state && !cloudBootstrap) throw new Error("Mileage Logger local state is unavailable.");
       if (cloudBootstrap) {
         state = cloudBootstrapState();
         meta.records = {};
         meta.lastSyncISO = "";
-      }
-      let localRecords = cloudBootstrap ? new Map() : scanLocal(state, meta);
-      const initialCloudBootstrap = cloudBootstrap || (!meta.lastSyncISO && remoteRows.length > 0);
-      let remoteApplied = false;
-
-      for (const remote of remoteRows) {
-        if (!RECORD_TYPES.has(remote.record_type)) continue;
-        const key = recordKey(remote.record_type, remote.record_id);
-        const remoteTime = Date.parse(remote.modified_at || "") || 0;
-        const remoteHash = remote.tombstone ? "__deleted__" : hashValue(remote.payload);
-        const localMeta = meta.records[key];
-        const localRecord = localRecords.get(key);
-        const localHash = localRecord ? hashValue(localRecord.payload) : (localMeta?.tombstone ? "__deleted__" : "__missing__");
-        const contentDiffers = localHash !== remoteHash;
-
-        if (!localMeta || (initialCloudBootstrap && contentDiffers)) {
-          applyRemoteRecord(state, remote);
-          meta.records[key] = { hash: remoteHash, modifiedAt: remoteTime, syncedAt: remoteTime, tombstone: Boolean(remote.tombstone) };
-          remoteApplied = true;
-          continue;
-        }
-
-        const localModified = Number(localMeta.modifiedAt || 0);
-        const localSynced = Number(localMeta.syncedAt || 0);
-        const localDirty = localModified > localSynced;
-        const remoteChanged = remoteTime > localSynced;
-        if (localDirty && remoteChanged && contentDiffers) {
-          const remoteWins = remoteTime >= localModified;
-          meta.conflicts.push({
-            at: nowISO(),
-            type: remote.record_type,
-            id: remote.record_id,
-            localDevice: deviceId(),
-            remoteDevice: remote.device_id || "other device",
-            winner: remoteWins ? "cloud/newer-device" : "this-device"
-          });
-          if (remoteWins) {
-            applyRemoteRecord(state, remote);
-            meta.records[key] = { hash: remoteHash, modifiedAt: remoteTime, syncedAt: remoteTime, tombstone: Boolean(remote.tombstone) };
-            remoteApplied = true;
-          }
-          continue;
-        }
-
-        if (remoteChanged && remoteTime >= localModified && contentDiffers) {
-          applyRemoteRecord(state, remote);
-          meta.records[key] = { hash: remoteHash, modifiedAt: remoteTime, syncedAt: remoteTime, tombstone: Boolean(remote.tombstone) };
-          remoteApplied = true;
-        } else if (!contentDiffers && remoteTime > localSynced) {
-          localMeta.syncedAt = remoteTime;
-          localMeta.modifiedAt = Math.max(localModified, remoteTime);
-          localMeta.hash = remoteHash;
-          localMeta.tombstone = Boolean(remote.tombstone);
-        }
+      } else {
+        state = shapeState(state);
       }
 
-      if (cloudBootstrap) finishCloudBootstrap(state);
-      if (remoteApplied) {
+      scanLocal(state, meta, { seedNewAsSynced: false, suppressActiveTripTombstone: cloudBootstrap });
+      const merged = mergeCloudIntoLocal(state, meta, remoteRows, { bootstrap: cloudBootstrap || !meta.lastSyncISO });
+      if (merged || cloudBootstrap) {
+        writeAppState(state, "cloud-sync-merge-v2");
+        state = shapeState(readAppState());
+      }
+
+      scanLocal(state, meta, { remoteApplied: merged, seedNewAsSynced: cloudBootstrap, suppressActiveTripTombstone: cloudBootstrap });
+      let outgoing = buildOutgoing(state, meta, session);
+      if (outgoing.length) {
+        const pushed = await pushRows(outgoing);
+        updateMetaFromPush(meta, outgoing, pushed);
+      }
+
+      const reconciled = await finalReconcile(state, meta, session);
+      state = reconciled.state;
+      remoteRows = reconciled.cloudRows;
+      const check = reconciled.check;
+      const checkedISO = nowISO();
+      meta.lastCheckedISO = checkedISO;
+      meta.lastMismatchKeys = check.mismatches.slice(0, 20);
+
+      if (check.mismatches.length) {
         saveMeta(meta);
-        writeAppState(state);
-        state = readAppState();
+        await heartbeat(session, checkedISO, "");
+        const sample = check.mismatches.slice(0, 3).join(", ");
+        setStatus("check", `${check.mismatches.length} record${check.mismatches.length === 1 ? "" : "s"} still differ from cloud${sample ? ` (${sample})` : ""}. This device will retry automatically.`);
+        return false;
       }
 
-      localRecords = scanLocal(state, meta, { remoteApplied, seedNewAsSynced: cloudBootstrap });
-      const outgoing = [];
-      if (!cloudBootstrap) Object.entries(meta.records).forEach(([key, item]) => {
-        const localModified = Number(item.modifiedAt || 0);
-        const localSynced = Number(item.syncedAt || 0);
-        if (localModified <= localSynced) return;
-        const separator = key.indexOf(":");
-        const type = key.slice(0, separator);
-        const id = key.slice(separator + 1);
-        if (!RECORD_TYPES.has(type)) return;
-        const record = localRecords.get(key);
-        outgoing.push({
-          user_id: session.user.id,
-          record_type: type,
-          record_id: id,
-          payload: item.tombstone ? null : (record?.payload ?? null),
-          device_id: deviceId(),
-          tombstone: Boolean(item.tombstone)
-        });
-      });
-
-      const pushed = await pushRows(outgoing);
-      const pushedRows = Array.isArray(pushed) ? pushed : [];
-      const pushedByKey = new Map(pushedRows.map((row) => [recordKey(row.record_type, row.record_id), row]));
-      outgoing.forEach((row) => {
-        const key = recordKey(row.record_type, row.record_id);
-        const item = meta.records[key];
-        if (!item) return;
-        const serverRow = pushedByKey.get(key);
-        const serverTime = Date.parse(serverRow?.modified_at || "") || Date.now();
-        item.modifiedAt = serverTime;
-        item.syncedAt = serverTime;
-        item.hash = row.tombstone ? "__deleted__" : hashValue(row.payload);
-        item.tombstone = Boolean(row.tombstone);
-      });
-
-      const syncISO = nowISO();
-      meta.lastSyncISO = syncISO;
+      meta.lastSyncISO = checkedISO;
       saveMeta(meta);
-      await heartbeat(session, syncISO);
-      const newConflictCount = Math.max(0, meta.conflicts.length - conflictCountBeforeSync);
-      const historicalNotice = !newConflictCount && meta.conflicts.length ? " Historical conflicts remain available in Sync History." : "";
-      setStatus(newConflictCount ? "warn" : "ready", `${cloudBootstrap ? "This device was initialized from existing cloud data. " : ""}${outgoing.length ? `${outgoing.length} change${outgoing.length === 1 ? "" : "s"} synchronized. ` : ""}Synced ${new Date(syncISO).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.${newConflictCount ? conflictMessage(meta) : historicalNotice}`);
+      await heartbeat(session, checkedISO, checkedISO);
+      const newConflicts = Math.max(0, meta.conflicts.length - conflictCountBefore);
+      const summary = `${check.counts.trip || 0} trips, ${check.counts.inspection || 0} inspections, ${check.counts.active_job || 0} Active Jobs`;
+      setStatus(newConflicts ? "warn" : "ready", `Verified ${new Date(checkedISO).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}: ${summary} match cloud.${newConflicts ? " A newer-copy conflict was resolved; see Sync History." : ""}`);
       return true;
     } catch (error) {
       console.warn("Mileage Logger sync failed:", error);
@@ -635,7 +745,29 @@
       return false;
     } finally {
       syncInFlight = false;
+      if (syncRequested) {
+        syncRequested = false;
+        scheduleSync("queued-change", 500);
+      }
     }
+  }
+
+  function markDeleted(type, id) {
+    if (!RECORD_TYPES.has(type) || !id) return false;
+    const meta = loadMeta();
+    const key = recordKey(type, id);
+    const existing = meta.records[key] || {};
+    meta.records[key] = {
+      ...existing,
+      hash: "__deleted__",
+      modifiedAt: Date.now(),
+      syncedAt: Number(existing.syncedAt || 0),
+      tombstone: true,
+      deletionSource: "explicit"
+    };
+    saveMeta(meta);
+    scheduleSync("explicit-delete", 100);
+    return true;
   }
 
   function setStatus(state, message) {
@@ -644,20 +776,20 @@
   }
 
   function statusLabel(state) {
-    return ({ off: "LOCAL", ready: "SYNCED", syncing: "SYNCING", offline: "OFFLINE", warn: "CHECK", error: "ERROR" })[state] || "SYNC";
+    return ({ off: "LOCAL", ready: "SYNCED", syncing: "SYNCING", offline: "OFFLINE", check: "CHECK", warn: "CHECK", error: "ERROR" })[state] || "SYNC";
   }
 
   function renderStatus() {
     const indicator = $("multiDeviceSyncIndicator");
     if (indicator) {
       indicator.textContent = statusLabel(lastStatus.state);
-      indicator.dataset.syncState = lastStatus.state;
+      indicator.dataset.syncState = lastStatus.state === "check" ? "warn" : lastStatus.state;
       indicator.title = lastStatus.message;
     }
     const status = $("multiDeviceSyncStatus");
     if (status) {
       status.textContent = lastStatus.message;
-      status.dataset.syncState = lastStatus.state;
+      status.dataset.syncState = lastStatus.state === "check" ? "warn" : lastStatus.state;
     }
     const config = loadConfig();
     const session = loadSession();
@@ -672,7 +804,8 @@
     if (history) {
       const meta = loadMeta();
       const conflicts = [...meta.conflicts].reverse();
-      history.innerHTML = `<p><strong>Current sync health:</strong> ${escapeHTML(statusLabel(lastStatus.state))}</p><p><strong>Last successful sync:</strong> ${meta.lastSyncISO ? escapeHTML(new Date(meta.lastSyncISO).toLocaleString()) : "Not yet completed"}</p>${conflicts.length ? `<div class="sync-history-list">${conflicts.map((item) => `<article><strong>${escapeHTML(item.type)} ${escapeHTML(item.id)}</strong><small>${escapeHTML(new Date(item.at).toLocaleString())} • ${escapeHTML(item.winner)} copy kept • remote ${escapeHTML(item.remoteDevice || "other device")}</small></article>`).join("")}</div>` : `<p>No historical conflicts.</p>`}`;
+      const mismatch = meta.lastMismatchKeys.length ? `<p><strong>Last unmatched records:</strong> ${escapeHTML(meta.lastMismatchKeys.join(", "))}</p>` : "";
+      history.innerHTML = `<p><strong>Current sync health:</strong> ${escapeHTML(statusLabel(lastStatus.state))}</p><p><strong>Last verified sync:</strong> ${meta.lastSyncISO ? escapeHTML(new Date(meta.lastSyncISO).toLocaleString()) : "Not yet verified"}</p>${mismatch}${conflicts.length ? `<div class="sync-history-list">${conflicts.map((item) => `<article><strong>${escapeHTML(item.type)} ${escapeHTML(item.id)}</strong><small>${escapeHTML(new Date(item.at).toLocaleString())} • ${escapeHTML(item.winner)} copy kept • remote ${escapeHTML(item.remoteDevice || "other device")}</small></article>`).join("")}</div>` : `<p>No historical conflicts.</p>`}`;
     }
   }
 
@@ -684,10 +817,8 @@
       indicator.id = "multiDeviceSyncIndicator";
       indicator.className = "sync-indicator";
       indicator.type = "button";
-      indicator.textContent = "LOCAL";
-      indicator.addEventListener("click", () => {
-        $("multiDeviceSyncCard")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
+      indicator.textContent = "CHECK";
+      indicator.addEventListener("click", () => $("multiDeviceSyncCard")?.scrollIntoView({ behavior: "smooth", block: "start" }));
       topbar.appendChild(indicator);
     }
 
@@ -703,7 +834,7 @@
         <span id="multiDeviceIdentity" class="sync-identity">Not signed in</span>
       </div>
       <p class="sync-explainer">Use the same Mileage Logger records on iPhone, iPad, and PC. Local data remains available offline; structured changes synchronize when internet is available.</p>
-      <div id="multiDeviceSyncStatus" class="sync-status">Multi-device sync not configured.</div>
+      <div id="multiDeviceSyncStatus" class="sync-status">Checking cloud agreement…</div>
       <details class="sync-advanced"><summary>Sync History</summary><div id="multiDeviceSyncHistory"></div></details>
       <div class="sync-grid">
         <label>Sync email<input id="multiDeviceEmail" type="email" autocomplete="email" value="${escapeHTML(config.email)}" placeholder="Your private sync login"></label>
@@ -724,7 +855,7 @@
         <label class="checkbox-row"><input id="multiDeviceEnabled" type="checkbox"${config.enabled ? " checked" : ""}><span>Enable multi-device synchronization on this device</span></label>
         <button id="multiDeviceSaveConfigBtn" class="button button-secondary button-small" type="button">Save Sync Setup</button>
       </details>
-      <p class="privacy-note compact-note"><strong>Current phase:</strong> trips, active trip, inspections, vendor-load details, Active Jobs, Facility Profiles, import audit history, Concur status, timesheet entries/weeks, and durable app preferences synchronize. Actual photo files, the private STA master PDF, and other documents remain device-local until the file-sync phase is enabled.</p>
+      <p class="privacy-note compact-note"><strong>Sync rule:</strong> a device that is missing a record does not delete that record from the cloud. Deletions require an explicit delete action. The SYNCED badge appears only after this device is verified against cloud records.</p>
     `;
     const firstCard = settingsSection.querySelector(".settings-card, .warning-card, form, .card");
     if (firstCard) firstCard.insertAdjacentElement("beforebegin", card);
@@ -743,7 +874,7 @@
         return;
       }
       saveConfig(next);
-      setStatus(configReady(next) ? (sessionReady() ? "ready" : "warn") : "off", configReady(next) ? (sessionReady() ? "Sync setup saved." : "Sync setup saved. Sign in to begin synchronization.") : "Multi-device sync setup is incomplete. Local Mileage Logger continues to work normally.");
+      setStatus(configReady(next) ? (sessionReady() ? "check" : "warn") : "off", configReady(next) ? (sessionReady() ? "Sync setup saved. Verification pending." : "Sync setup saved. Sign in to begin synchronization.") : "Multi-device sync setup is incomplete. Local Mileage Logger continues to work normally.");
     });
 
     $("multiDeviceSignInBtn")?.addEventListener("click", async () => {
@@ -796,21 +927,25 @@
     if (!configReady()) return setStatus("off", "Multi-device sync not configured. Local/offline Mileage Logger works normally.");
     if (!sessionReady()) return setStatus("warn", "Sync setup is ready. Sign in to synchronize this device.");
     if (!navigator.onLine) return setStatus("offline", "Offline — local changes will sync when internet returns.");
-    const meta = loadMeta();
-    setStatus("ready", meta.lastSyncISO ? `Last synced ${new Date(meta.lastSyncISO).toLocaleString()}.` : "Signed in. Initial synchronization pending.");
+    setStatus("check", "Signed in. Verifying this device against cloud records…");
+  }
+
+  function scheduleSync(reason = "scheduled", delay = 500) {
+    clearTimeout(scheduledSyncTimer);
+    scheduledSyncTimer = setTimeout(() => syncNow({ reason }), Math.max(0, delay));
   }
 
   function startScheduler() {
     clearInterval(syncTimer);
     syncTimer = setInterval(() => syncNow({ reason: "interval" }), SYNC_INTERVAL_MS);
-    window.addEventListener("online", () => syncNow({ reason: "online" }));
+    window.addEventListener("online", () => scheduleSync("online", 100));
     window.addEventListener("offline", () => setStatus("offline", "Offline — local changes will sync when internet returns."));
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") syncNow({ reason: "visible" });
+      if (document.visibilityState === "visible") scheduleSync("visible", 150);
     });
     window.addEventListener("mileage:state-changed", (event) => {
-      if (applyingRemote || event.detail?.source === "cloud-sync") return;
-      setTimeout(() => syncNow({ reason: "state-change" }), 1200);
+      if (applyingRemote || String(event.detail?.source || "").startsWith("cloud-sync")) return;
+      scheduleSync("state-change", 700);
     });
   }
 
@@ -818,13 +953,14 @@
     injectUI();
     initialStatus();
     startScheduler();
-    setTimeout(() => syncNow({ reason: "startup" }), 1500);
+    scheduleSync("startup", 800);
   }
 
   window.MileageMultiDeviceSync = {
     syncNow,
     signIn,
     signOut,
+    markDeleted,
     getStatus: () => ({ ...lastStatus }),
     getDeviceId: deviceId,
     getConfig: loadConfig
