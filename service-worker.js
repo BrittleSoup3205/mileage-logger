@@ -1,4 +1,4 @@
-const CACHE_NAME = "mileage-logger-report-fixes-v107";
+const CACHE_NAME = "mileage-logger-report-fixes-v108";
 
 const ACTIVE_JOBS_MANAGEMENT_ASSET = "./active-jobs-management.js?v=xlsx-self-closing-cells-1";
 const ACTIVE_JOBS_ACTIVITY_EXPORT_FIX_ASSET = "./active-jobs-activity-export-fix.js?v=activity-feed-2";
@@ -6,7 +6,7 @@ const ACTIVE_JOBS_IMPORT_AJ_IDENTITY_FIX_ASSET = "./active-jobs-import-aj-identi
 const MASTER_REPORT_DATA_IMPORT_ASSET = "./master-report-data-import.js?v=report-data-2";
 const MASTER_REPORT_DATA_CAPTURE_FIX_ASSET = "./master-report-data-capture-fix.js?v=report-data-capture-1";
 const SYNC_ENGINE_ASSET = "./sync-engine.js?v=authoritative-sync-2";
-const ACTIVE_TRIP_EXPLICIT_CLEAR_FIX_ASSET = "./active-trip-explicit-clear-fix.js?v=active-trip-explicit-1";
+const ACTIVE_TRIP_EXPLICIT_CLEAR_FIX_ASSET = "./active-trip-explicit-clear-fix.js?v=active-trip-explicit-2";
 const INSPECTION_DELETE_SYNC_FIX_ASSET = "./inspection-delete-sync-fix.js?v=explicit-delete-2";
 const INTEGRITY_SYNC_FIX_ASSET = "./integrity-sync-fix.js?v=integrity-sync-2";
 const TRIP_DUPLICATE_INTEGRITY_FIX_ASSET = "./trip-duplicate-integrity-fix.js?v=trip-dedupe-2";
@@ -27,7 +27,7 @@ const PHOTO_INDENT_FIX_ASSET = "./photo-indent-fix.js?v=s-and-b-photo-indent-2";
 const PHOTO_CLOUD_ASSET = "./photo-cloud-sync.js?v=cloud-photos-2";
 const AUTO_REPORT_TEXT_ASSET = "./auto-report-text.js?v=phrase-library-1";
 const COATING_SYSTEM_LABEL_FIX_ASSET = "./coating-system-label-fix.js?v=coating-system-labels-1";
-const INDEX_ASSET = "./index.html?v=report-fixes-35";
+const INDEX_ASSET = "./index.html?v=report-fixes-36";
 
 const APP_FILES = [
   "./",
