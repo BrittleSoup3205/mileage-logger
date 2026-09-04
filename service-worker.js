@@ -1,4 +1,4 @@
-const CACHE_NAME = "mileage-logger-report-fixes-v106";
+const CACHE_NAME = "mileage-logger-report-fixes-v107";
 
 const ACTIVE_JOBS_MANAGEMENT_ASSET = "./active-jobs-management.js?v=xlsx-self-closing-cells-1";
 const ACTIVE_JOBS_ACTIVITY_EXPORT_FIX_ASSET = "./active-jobs-activity-export-fix.js?v=activity-feed-2";
@@ -6,6 +6,7 @@ const ACTIVE_JOBS_IMPORT_AJ_IDENTITY_FIX_ASSET = "./active-jobs-import-aj-identi
 const MASTER_REPORT_DATA_IMPORT_ASSET = "./master-report-data-import.js?v=report-data-2";
 const MASTER_REPORT_DATA_CAPTURE_FIX_ASSET = "./master-report-data-capture-fix.js?v=report-data-capture-1";
 const SYNC_ENGINE_ASSET = "./sync-engine.js?v=authoritative-sync-2";
+const ACTIVE_TRIP_EXPLICIT_CLEAR_FIX_ASSET = "./active-trip-explicit-clear-fix.js?v=active-trip-explicit-1";
 const INSPECTION_DELETE_SYNC_FIX_ASSET = "./inspection-delete-sync-fix.js?v=explicit-delete-2";
 const INTEGRITY_SYNC_FIX_ASSET = "./integrity-sync-fix.js?v=integrity-sync-2";
 const TRIP_DUPLICATE_INTEGRITY_FIX_ASSET = "./trip-duplicate-integrity-fix.js?v=trip-dedupe-2";
@@ -26,7 +27,7 @@ const PHOTO_INDENT_FIX_ASSET = "./photo-indent-fix.js?v=s-and-b-photo-indent-2";
 const PHOTO_CLOUD_ASSET = "./photo-cloud-sync.js?v=cloud-photos-2";
 const AUTO_REPORT_TEXT_ASSET = "./auto-report-text.js?v=phrase-library-1";
 const COATING_SYSTEM_LABEL_FIX_ASSET = "./coating-system-label-fix.js?v=coating-system-labels-1";
-const INDEX_ASSET = "./index.html?v=report-fixes-34";
+const INDEX_ASSET = "./index.html?v=report-fixes-35";
 
 const APP_FILES = [
   "./",
@@ -49,6 +50,7 @@ const APP_FILES = [
   TRIP_LOG_DESKTOP_ASSET,
   "./workflow-queues.js?v=full-upgrade-list-1",
   SYNC_ENGINE_ASSET,
+  ACTIVE_TRIP_EXPLICIT_CLEAR_FIX_ASSET,
   INSPECTION_DELETE_SYNC_FIX_ASSET,
   INTEGRITY_SYNC_FIX_ASSET,
   TRIP_DUPLICATE_INTEGRITY_FIX_ASSET,
@@ -124,13 +126,41 @@ function hardenSyncEngineSource(source) {
         existing.deletionSource = "";
       }`;
 
+  const oldActiveClearBlock = `    const activeTripKey = recordKey("active_trip", "current");
+    const activeTripMeta = meta.records[activeTripKey];
+    if (!current.has(activeTripKey) && activeTripMeta && !activeTripMeta.tombstone && !options.suppressActiveTripTombstone) {
+      activeTripMeta.hash = "__deleted__";
+      activeTripMeta.tombstone = true;
+      activeTripMeta.deletionSource = "active-trip-cleared";
+      activeTripMeta.modifiedAt = timestamp;
+      activeTripMeta.syncedAt = Number(activeTripMeta.syncedAt || 0);
+    }`;
+  const newActiveClearBlock = `    const activeTripKey = recordKey("active_trip", "current");
+    const activeTripMeta = meta.records[activeTripKey];
+    // Active-trip deletion is explicit-only. A device that simply lacks an
+    // active trip must never clear another device's current trip.
+    if (activeTripMeta?.tombstone && activeTripMeta.deletionSource === "active-trip-cleared") {
+      if (current.has(activeTripKey)) {
+        const activeRecord = current.get(activeTripKey);
+        meta.records[activeTripKey] = {
+          hash: hashValue(activeRecord.payload),
+          modifiedAt: timestamp,
+          syncedAt: Number(activeTripMeta.syncedAt || 0),
+          tombstone: false,
+          deletionSource: ""
+        };
+      } else {
+        delete meta.records[activeTripKey];
+      }
+    }`;
+
   const oldMergeAnchor = `      const localHash = hashValue(localRecord.payload);
       if (localHash === remoteHash) {`;
   const newMergeAnchor = `      const localHash = hashValue(localRecord.payload);
 
       // The active-trip singleton is reused for every trip. If another device
-      // ended/cancelled this trip after it began, its newer cloud tombstone wins.
-      // A truly new active trip that began after the tombstone remains local-dirty.
+      // explicitly ended/cancelled this trip after it began, its newer cloud
+      // tombstone wins. A truly new trip that began later remains local-dirty.
       if (remote.record_type === "active_trip" && remote.record_id === "current" && remote.tombstone) {
         const localStart = Date.parse(localRecord.payload?.startISO || "") || 0;
         if (!localStart || remoteTime >= localStart) {
@@ -154,6 +184,7 @@ function hardenSyncEngineSource(source) {
 
   let hardened = source;
   if (hardened.includes(oldScanBlock)) hardened = hardened.replace(oldScanBlock, newScanBlock);
+  if (hardened.includes(oldActiveClearBlock)) hardened = hardened.replace(oldActiveClearBlock, newActiveClearBlock);
   if (hardened.includes(oldMergeAnchor)) hardened = hardened.replace(oldMergeAnchor, newMergeAnchor);
   return hardened;
 }
@@ -201,7 +232,8 @@ async function injectRuntimeLoaders(response) {
       else html = appendScript(html, SYNC_ENGINE_ASSET);
     }
   }
-  html = injectAfter(html, scriptTag(SYNC_ENGINE_ASSET), INSPECTION_DELETE_SYNC_FIX_ASSET);
+  html = injectAfter(html, scriptTag(SYNC_ENGINE_ASSET), ACTIVE_TRIP_EXPLICIT_CLEAR_FIX_ASSET);
+  html = injectAfter(html, scriptTag(ACTIVE_TRIP_EXPLICIT_CLEAR_FIX_ASSET), INSPECTION_DELETE_SYNC_FIX_ASSET);
   html = injectAfter(html, scriptTag(INSPECTION_DELETE_SYNC_FIX_ASSET), INTEGRITY_SYNC_FIX_ASSET);
   html = injectAfter(html, scriptTag(INTEGRITY_SYNC_FIX_ASSET), TRIP_DUPLICATE_INTEGRITY_FIX_ASSET);
   html = injectAfter(html, scriptTag(TRIP_DUPLICATE_INTEGRITY_FIX_ASSET), BACKUP_CHECKPOINT_SYNC_V2_ASSET);
