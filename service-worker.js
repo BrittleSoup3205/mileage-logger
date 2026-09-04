@@ -1,4 +1,4 @@
-const CACHE_NAME = "mileage-logger-report-fixes-v105";
+const CACHE_NAME = "mileage-logger-report-fixes-v106";
 
 const ACTIVE_JOBS_MANAGEMENT_ASSET = "./active-jobs-management.js?v=xlsx-self-closing-cells-1";
 const ACTIVE_JOBS_ACTIVITY_EXPORT_FIX_ASSET = "./active-jobs-activity-export-fix.js?v=activity-feed-2";
@@ -11,6 +11,7 @@ const INTEGRITY_SYNC_FIX_ASSET = "./integrity-sync-fix.js?v=integrity-sync-2";
 const TRIP_DUPLICATE_INTEGRITY_FIX_ASSET = "./trip-duplicate-integrity-fix.js?v=trip-dedupe-2";
 const BACKUP_CHECKPOINT_SYNC_V2_ASSET = "./backup-checkpoint-sync-v2.js?v=backup-checkpoint-3";
 const LAST_ODOMETER_FIX_ASSET = "./last-odometer-derived-fix.js?v=derived-odometer-1";
+const CLOUD_STATE_REFRESH_BRIDGE_ASSET = "./cloud-state-refresh-bridge.js?v=cloud-state-refresh-1";
 const TRIP_INSPECTION_LINKS_ASSET = "./trip-inspection-links.js?v=trip-inspection-links-2";
 const TRIP_LOG_DESKTOP_ASSET = "./trip-log-desktop.js?v=responsive-log-2";
 const WORD_PHOTO_FIT_ASSET = "./word-photo-fit-fix.js?v=word-photo-fit-2";
@@ -25,7 +26,7 @@ const PHOTO_INDENT_FIX_ASSET = "./photo-indent-fix.js?v=s-and-b-photo-indent-2";
 const PHOTO_CLOUD_ASSET = "./photo-cloud-sync.js?v=cloud-photos-2";
 const AUTO_REPORT_TEXT_ASSET = "./auto-report-text.js?v=phrase-library-1";
 const COATING_SYSTEM_LABEL_FIX_ASSET = "./coating-system-label-fix.js?v=coating-system-labels-1";
-const INDEX_ASSET = "./index.html?v=report-fixes-33";
+const INDEX_ASSET = "./index.html?v=report-fixes-34";
 
 const APP_FILES = [
   "./",
@@ -34,6 +35,7 @@ const APP_FILES = [
   "./multi-device.css?v=multi-device-1",
   "./workflow-data.js?v=full-upgrade-list-1",
   LAST_ODOMETER_FIX_ASSET,
+  CLOUD_STATE_REFRESH_BRIDGE_ASSET,
   "./app.js?v=full-upgrade-list-1",
   "./inspections.js?v=full-upgrade-list-1",
   WORD_PHOTO_FIT_ASSET,
@@ -164,8 +166,14 @@ async function injectRuntimeLoaders(response) {
 
   const appTag = '<script src="./app.js?v=full-upgrade-list-1"></script>';
   if (!html.includes("last-odometer-derived-fix.js")) {
-    if (html.includes(appTag)) html = html.replace(appTag, `${scriptTag(LAST_ODOMETER_FIX_ASSET)}\n  ${appTag}`);
-    else html = appendScript(html, LAST_ODOMETER_FIX_ASSET);
+    if (html.includes(appTag)) html = html.replace(appTag, `${scriptTag(LAST_ODOMETER_FIX_ASSET)}\n  ${scriptTag(CLOUD_STATE_REFRESH_BRIDGE_ASSET)}\n  ${appTag}`);
+    else {
+      html = appendScript(html, LAST_ODOMETER_FIX_ASSET);
+      html = appendScript(html, CLOUD_STATE_REFRESH_BRIDGE_ASSET);
+    }
+  } else if (!html.includes("cloud-state-refresh-bridge.js")) {
+    if (html.includes(appTag)) html = html.replace(appTag, `${scriptTag(CLOUD_STATE_REFRESH_BRIDGE_ASSET)}\n  ${appTag}`);
+    else html = appendScript(html, CLOUD_STATE_REFRESH_BRIDGE_ASSET);
   }
 
   const inspectionsTag = '<script src="./inspections.js?v=full-upgrade-list-1"></script>';
