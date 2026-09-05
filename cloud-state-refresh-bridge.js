@@ -2,9 +2,10 @@
   "use strict";
 
   const STATE_KEY = "mileage_logger_state_v3";
-  const RELOAD_SIGNATURE_KEY = "mileage_logger_cloud_reload_signature_v1";
+  const RELOAD_SIGNATURE_KEY = "mileage_logger_cloud_reload_signature_v2";
   let reloadTimer = null;
   let pendingWhileHidden = false;
+  let pendingWhileEditing = false;
 
   function hashText(text) {
     let hash = 2166136261;
@@ -20,9 +21,23 @@
     return `${raw.length}:${hashText(raw)}`;
   }
 
+  function inspectionFormIsOpen() {
+    const panel = document.getElementById("inspectionFormPanel");
+    if (!panel) return false;
+    return !panel.classList.contains("hidden") && panel.offsetParent !== null;
+  }
+
   function scheduleReload() {
     if (document.visibilityState === "hidden") {
       pendingWhileHidden = true;
+      return;
+    }
+
+    // Cloud synchronization must never tear down the inspection form while the
+    // inspector is entering data. The merged state is already safe in
+    // localStorage; defer the visual reload until the form is closed.
+    if (inspectionFormIsOpen()) {
+      pendingWhileEditing = true;
       return;
     }
 
@@ -36,15 +51,24 @@
     }, 250);
   }
 
+  function retryDeferredReload() {
+    if (document.visibilityState !== "visible") return;
+    if (inspectionFormIsOpen()) return;
+    if (!pendingWhileHidden && !pendingWhileEditing) return;
+    pendingWhileHidden = false;
+    pendingWhileEditing = false;
+    scheduleReload();
+  }
+
   window.addEventListener("mileage:state-changed", (event) => {
     const source = String(event.detail?.source || "");
     if (!source.startsWith("cloud-sync")) return;
     scheduleReload();
   });
 
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState !== "visible" || !pendingWhileHidden) return;
-    pendingWhileHidden = false;
-    scheduleReload();
-  });
+  document.addEventListener("visibilitychange", retryDeferredReload);
+  document.addEventListener("click", () => {
+    if (!pendingWhileEditing) return;
+    setTimeout(retryDeferredReload, 0);
+  }, true);
 })();
