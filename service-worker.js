@@ -1,4 +1,4 @@
-const CACHE_NAME = "mileage-logger-report-fixes-v109";
+const CACHE_NAME = "mileage-logger-report-fixes-v110";
 
 const ACTIVE_JOBS_MANAGEMENT_ASSET = "./active-jobs-management.js?v=xlsx-self-closing-cells-1";
 const ACTIVE_JOBS_ACTIVITY_EXPORT_FIX_ASSET = "./active-jobs-activity-export-fix.js?v=activity-feed-2";
@@ -15,6 +15,7 @@ const LAST_ODOMETER_FIX_ASSET = "./last-odometer-derived-fix.js?v=derived-odomet
 const CLOUD_STATE_REFRESH_BRIDGE_ASSET = "./cloud-state-refresh-bridge.js?v=cloud-state-refresh-2";
 const TRIP_INSPECTION_LINKS_ASSET = "./trip-inspection-links.js?v=trip-inspection-links-2";
 const TRIP_LOG_DESKTOP_ASSET = "./trip-log-desktop.js?v=responsive-log-2";
+const TRIP_DURATION_LOG_FIX_ASSET = "./trip-duration-log-fix.js?v=trip-duration-1";
 const WORD_PHOTO_FIT_ASSET = "./word-photo-fit-fix.js?v=word-photo-fit-2";
 const INSPECTION_ACTIVITY_RULES_ASSET = "./inspection-activity-rules.js?v=structural-pmi-1";
 const REPORT_HEADER_AUTOFILL_ASSET = "./report-header-autofill.js?v=report-header-1";
@@ -48,6 +49,7 @@ const APP_FILES = [
   REPORT_DATA_CLOUD_REFRESH_ASSET,
   TRIP_INSPECTION_LINKS_ASSET,
   TRIP_LOG_DESKTOP_ASSET,
+  TRIP_DURATION_LOG_FIX_ASSET,
   "./workflow-queues.js?v=full-upgrade-list-1",
   SYNC_ENGINE_ASSET,
   ACTIVE_TRIP_EXPLICIT_CLEAR_FIX_ASSET,
@@ -215,6 +217,7 @@ async function injectRuntimeLoaders(response) {
   html = injectAfter(html, scriptTag(REPORT_TEMPLATE_V2_FIX_ASSET), REPORT_TEMPLATE_FINAL_FIX_ASSET);
   html = injectAfter(html, scriptTag(REPORT_TEMPLATE_FINAL_FIX_ASSET), TRIP_INSPECTION_LINKS_ASSET);
   html = injectAfter(html, scriptTag(TRIP_INSPECTION_LINKS_ASSET), TRIP_LOG_DESKTOP_ASSET);
+  html = injectAfter(html, scriptTag(TRIP_LOG_DESKTOP_ASSET), TRIP_DURATION_LOG_FIX_ASSET);
 
   const activeJobsDataTag = '<script src="./active-jobs-data.js?v=visit-workspace-5"></script>';
   html = injectAfter(html, activeJobsDataTag, ACTIVE_JOBS_ACTIVITY_EXPORT_FIX_ASSET);
