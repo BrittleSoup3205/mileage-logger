@@ -9,12 +9,25 @@
   let decorating = false;
   let lastMode = "";
 
+  function isIPadLike() {
+    const ua = navigator.userAgent || "";
+    const platform = navigator.platform || "";
+    const touchPoints = Number(navigator.maxTouchPoints || 0);
+    return /iPad/i.test(ua)
+      || ((platform === "MacIntel" || /Macintosh/i.test(ua)) && touchPoints > 1);
+  }
+
   function mode() {
     const width = window.innerWidth || document.documentElement.clientWidth || 0;
     const height = window.innerHeight || document.documentElement.clientHeight || 0;
     if (width <= PHONE_MAX_WIDTH || (height <= PHONE_MAX_HEIGHT_LANDSCAPE && width < DESKTOP_MIN_WIDTH)) return "phone";
+    if (isIPadLike()) return "tablet";
     if (width < DESKTOP_MIN_WIDTH) return "tablet";
     return "desktop";
+  }
+
+  function setModeMarker(current) {
+    document.documentElement.dataset.tripLogMode = current;
   }
 
   function escapeHTML(value) {
@@ -53,7 +66,7 @@
       inspection.activeJobId,
       inspection.sbInspectionNo || inspection.projectNumber,
       inspection.inspectionType || inspection.activity || "Inspection"
-    ].map((value) => String(value || "").trim()).filter(Boolean).join(" • ");
+    ].map((item) => String(item || "").trim()).filter(Boolean).join(" • ");
   }
 
   function fmtNumber(value) {
@@ -86,110 +99,155 @@
     style.textContent = `
       #responsiveTripLog { display:none; }
 
-      @media (min-width: 1180px) {
-        #logSection {
-          width:min(1880px, calc(100vw - 28px));
-          max-width:none !important;
-          margin-left:50%; margin-right:0; transform:translateX(-50%);
-          padding:16px 18px 18px;
-        }
-        #logSection .section-heading { margin-bottom:10px; }
-        #logSection .log-toolbar { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; margin-bottom:10px; }
-        #logSection .table-wrap { max-height:calc(100vh - 265px); overflow:auto; border:1px solid var(--line); border-radius:12px; background:var(--card); }
-        #tripTable { width:100%; min-width:1120px; table-layout:fixed; font-size:.78rem; border-collapse:separate; border-spacing:0; }
-        #tripTable thead th { position:sticky; top:0; z-index:6; padding:9px 7px; white-space:nowrap; background:var(--card); box-shadow:inset 0 -1px 0 var(--line); }
-        #tripTable tbody > tr.trip-main-row > td { padding:8px 7px; vertical-align:middle; white-space:nowrap; line-height:1.25; }
-        #tripTable tbody > tr.trip-main-row:hover > td { background:color-mix(in srgb, var(--card), var(--info) 5%); }
-        #tripTable th:nth-child(5), #tripTable td:nth-child(5),
-        #tripTable th:nth-child(6), #tripTable td:nth-child(6),
-        #tripTable th:nth-child(8), #tripTable td:nth-child(8),
-        #tripTable th:nth-child(9), #tripTable td:nth-child(9),
-        #tripTable th:nth-child(10), #tripTable td:nth-child(10),
-        #tripTable th:nth-child(13), #tripTable td:nth-child(13),
-        #tripTable th:nth-child(14), #tripTable td:nth-child(14),
-        #tripTable th:nth-child(15), #tripTable td:nth-child(15) { display:none; }
-        #tripTable th:nth-child(1), #tripTable td:nth-child(1) { width:92px; }
-        #tripTable th:nth-child(2), #tripTable td:nth-child(2) { width:120px; }
-        #tripTable th:nth-child(3), #tripTable td:nth-child(3),
-        #tripTable th:nth-child(4), #tripTable td:nth-child(4) { width:78px; }
-        #tripTable th:nth-child(7), #tripTable td:nth-child(7) { width:72px; }
-        #tripTable th:nth-child(11), #tripTable td:nth-child(11) { width:140px; white-space:normal; }
-        #tripTable th:nth-child(12), #tripTable td:nth-child(12) { width:130px; white-space:normal; }
-        #tripTable th:nth-child(16), #tripTable td:nth-child(16) { width:70px; }
-        #tripTable th[data-trip-inspection-header], #tripTable td.trip-inspection-cell { width:290px; }
-        #tripTable th:last-child, #tripTable td:last-child { width:165px; }
-        #tripTable .trip-inspection-cell { min-width:0; white-space:normal; }
-        #tripTable .trip-inspection-stack { gap:4px; }
-        #tripTable .trip-inspection-item { padding:4px 5px; border-radius:7px; }
-        #tripTable .trip-inspection-label { margin:2px 0 4px; font-size:.70rem; }
-        #tripTable .trip-inspection-actions .button, #tripTable .trip-row-actions .button { min-height:30px; padding:5px 7px; font-size:.70rem; }
-        #tripTable .trip-row-actions { display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
-        #tripTable .trip-detail-row > td { display:table-cell !important; padding:0 !important; border-top:0; white-space:normal !important; background:color-mix(in srgb, var(--card), var(--bg) 26%); }
-        #tripTable .trip-detail-row.hidden { display:none; }
-        #tripTable .trip-detail-panel { padding:12px 14px 14px; border-top:1px dashed var(--line); }
-        #tripTable .trip-detail-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:8px; }
-        #tripTable .trip-detail-item { min-width:0; padding:8px 9px; border:1px solid var(--line); border-radius:9px; background:var(--card); }
-        #tripTable .trip-detail-item.wide { grid-column:span 2; }
-        #tripTable .trip-detail-item.full { grid-column:1/-1; }
-        #tripTable .trip-detail-item > span { display:block; margin-bottom:4px; color:var(--muted); font-size:.68rem; font-weight:800; letter-spacing:.04em; text-transform:uppercase; }
-        #tripTable .trip-detail-value { overflow-wrap:anywhere; font-size:.8rem; }
+      html[data-trip-log-mode="desktop"] #responsiveTripLog { display:none !important; }
+      html[data-trip-log-mode="desktop"] #logSection {
+        width:min(1880px, calc(100vw - 28px)); max-width:none !important;
+        margin-left:50%; margin-right:0; transform:translateX(-50%); padding:16px 18px 18px;
       }
-
-      @media (max-width:1179px) {
-        #logSection .table-wrap { display:none !important; }
-        #responsiveTripLog { display:grid; gap:10px; margin-top:10px; }
-        #logSection { overflow:visible; }
-        .responsive-trip-card { border:1px solid var(--line); border-radius:13px; background:var(--card); overflow:hidden; }
-        .responsive-trip-main { padding:12px 13px; }
-        .responsive-trip-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
-        .responsive-trip-date { font-size:.84rem; color:var(--muted); font-weight:800; }
-        .responsive-trip-project { margin-top:2px; font-size:1.02rem; font-weight:900; }
-        .responsive-trip-miles { flex:0 0 auto; font-size:1rem; font-weight:900; }
-        .responsive-trip-meta { display:flex; flex-wrap:wrap; gap:6px 14px; margin-top:8px; font-size:.88rem; }
-        .responsive-trip-meta strong { font-weight:850; }
-        .responsive-inspections { display:grid; gap:6px; margin-top:10px; }
-        .responsive-inspection { padding:8px 9px; border:1px solid var(--line); border-radius:9px; background:color-mix(in srgb, var(--card), var(--bg) 28%); }
-        .responsive-inspection-label { display:block; margin-bottom:6px; font-size:.78rem; font-weight:800; overflow-wrap:anywhere; }
-        .responsive-inspection-actions, .responsive-trip-actions { display:flex; flex-wrap:wrap; gap:6px; }
-        .responsive-trip-actions { margin-top:10px; }
-        .responsive-trip-actions .button, .responsive-inspection-actions .button { min-height:34px; padding:7px 10px; font-size:.78rem; }
-        .responsive-trip-details { display:none; padding:11px 13px 13px; border-top:1px dashed var(--line); background:color-mix(in srgb, var(--card), var(--bg) 26%); }
-        .responsive-trip-card.details-open .responsive-trip-details { display:block; }
-        .responsive-detail-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
-        .responsive-detail { padding:8px; border:1px solid var(--line); border-radius:9px; background:var(--card); min-width:0; }
-        .responsive-detail.full { grid-column:1/-1; }
-        .responsive-detail span { display:block; margin-bottom:3px; color:var(--muted); font-size:.68rem; font-weight:800; text-transform:uppercase; letter-spacing:.03em; }
-        .responsive-detail strong, .responsive-detail div { overflow-wrap:anywhere; font-size:.82rem; }
+      html[data-trip-log-mode="desktop"] #logSection .section-heading { margin-bottom:10px; }
+      html[data-trip-log-mode="desktop"] #logSection .log-toolbar {
+        display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; margin-bottom:10px;
       }
-
-      @media (min-width:700px) and (max-width:1179px) and (min-height:560px) {
-        #logSection { width:min(100%, 1080px); }
-        #responsiveTripLog { grid-template-columns:1fr; }
-        .responsive-trip-main { display:grid; grid-template-columns:180px minmax(0,1fr) auto; gap:14px; align-items:start; }
-        .responsive-trip-heading { display:block; }
-        .responsive-trip-meta { margin-top:0; }
-        .responsive-inspections { margin-top:0; min-width:260px; }
-        .responsive-trip-actions { grid-column:2 / -1; margin-top:0; }
+      html[data-trip-log-mode="desktop"] #logSection .table-wrap {
+        display:block !important; max-height:calc(100vh - 265px); overflow:auto;
+        border:1px solid var(--line); border-radius:12px; background:var(--card);
       }
-
-      @media (max-width:699px), (max-height:559px) and (max-width:1179px) {
-        #logSection { width:auto; margin-left:0; margin-right:0; transform:none; padding:14px; }
-        #logSection .section-heading { align-items:flex-start; }
-        #logSection .log-toolbar { display:grid; grid-template-columns:1fr; gap:8px; }
-        #logSection .log-toolbar .button { width:100%; }
-        .responsive-detail-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
-        .responsive-trip-main { padding:11px; }
-        .responsive-trip-meta { display:grid; grid-template-columns:1fr 1fr; gap:5px 10px; }
-        .responsive-trip-actions .button, .responsive-inspection-actions .button { flex:1 1 auto; }
+      html[data-trip-log-mode="desktop"] #tripTable {
+        width:100%; min-width:1120px; table-layout:fixed; font-size:.78rem;
+        border-collapse:separate; border-spacing:0;
       }
+      html[data-trip-log-mode="desktop"] #tripTable thead th {
+        position:sticky; top:0; z-index:6; padding:9px 7px; white-space:nowrap;
+        background:var(--card); box-shadow:inset 0 -1px 0 var(--line);
+      }
+      html[data-trip-log-mode="desktop"] #tripTable tbody > tr.trip-main-row > td {
+        padding:8px 7px; vertical-align:middle; white-space:nowrap; line-height:1.25;
+      }
+      html[data-trip-log-mode="desktop"] #tripTable tbody > tr.trip-main-row:hover > td {
+        background:color-mix(in srgb, var(--card), var(--info) 5%);
+      }
+      html[data-trip-log-mode="desktop"] #tripTable th:nth-child(5),
+      html[data-trip-log-mode="desktop"] #tripTable td:nth-child(5),
+      html[data-trip-log-mode="desktop"] #tripTable th:nth-child(6),
+      html[data-trip-log-mode="desktop"] #tripTable td:nth-child(6),
+      html[data-trip-log-mode="desktop"] #tripTable th:nth-child(8),
+      html[data-trip-log-mode="desktop"] #tripTable td:nth-child(8),
+      html[data-trip-log-mode="desktop"] #tripTable th:nth-child(9),
+      html[data-trip-log-mode="desktop"] #tripTable td:nth-child(9),
+      html[data-trip-log-mode="desktop"] #tripTable th:nth-child(10),
+      html[data-trip-log-mode="desktop"] #tripTable td:nth-child(10),
+      html[data-trip-log-mode="desktop"] #tripTable th:nth-child(13),
+      html[data-trip-log-mode="desktop"] #tripTable td:nth-child(13),
+      html[data-trip-log-mode="desktop"] #tripTable th:nth-child(14),
+      html[data-trip-log-mode="desktop"] #tripTable td:nth-child(14),
+      html[data-trip-log-mode="desktop"] #tripTable th:nth-child(15),
+      html[data-trip-log-mode="desktop"] #tripTable td:nth-child(15) { display:none; }
+      html[data-trip-log-mode="desktop"] #tripTable th:nth-child(1), html[data-trip-log-mode="desktop"] #tripTable td:nth-child(1) { width:92px; }
+      html[data-trip-log-mode="desktop"] #tripTable th:nth-child(2), html[data-trip-log-mode="desktop"] #tripTable td:nth-child(2) { width:120px; }
+      html[data-trip-log-mode="desktop"] #tripTable th:nth-child(3), html[data-trip-log-mode="desktop"] #tripTable td:nth-child(3),
+      html[data-trip-log-mode="desktop"] #tripTable th:nth-child(4), html[data-trip-log-mode="desktop"] #tripTable td:nth-child(4) { width:78px; }
+      html[data-trip-log-mode="desktop"] #tripTable th:nth-child(7), html[data-trip-log-mode="desktop"] #tripTable td:nth-child(7) { width:72px; }
+      html[data-trip-log-mode="desktop"] #tripTable th:nth-child(11), html[data-trip-log-mode="desktop"] #tripTable td:nth-child(11) { width:140px; white-space:normal; }
+      html[data-trip-log-mode="desktop"] #tripTable th:nth-child(12), html[data-trip-log-mode="desktop"] #tripTable td:nth-child(12) { width:130px; white-space:normal; }
+      html[data-trip-log-mode="desktop"] #tripTable th:nth-child(16), html[data-trip-log-mode="desktop"] #tripTable td:nth-child(16) { width:70px; }
+      html[data-trip-log-mode="desktop"] #tripTable th[data-trip-inspection-header],
+      html[data-trip-log-mode="desktop"] #tripTable td.trip-inspection-cell { width:290px; }
+      html[data-trip-log-mode="desktop"] #tripTable th:last-child,
+      html[data-trip-log-mode="desktop"] #tripTable td:last-child { width:165px; }
+      html[data-trip-log-mode="desktop"] #tripTable .trip-inspection-cell { min-width:0; white-space:normal; }
+      html[data-trip-log-mode="desktop"] #tripTable .trip-inspection-stack { gap:4px; }
+      html[data-trip-log-mode="desktop"] #tripTable .trip-inspection-item { padding:4px 5px; border-radius:7px; }
+      html[data-trip-log-mode="desktop"] #tripTable .trip-inspection-label { margin:2px 0 4px; font-size:.70rem; }
+      html[data-trip-log-mode="desktop"] #tripTable .trip-inspection-actions .button,
+      html[data-trip-log-mode="desktop"] #tripTable .trip-row-actions .button { min-height:30px; padding:5px 7px; font-size:.70rem; }
+      html[data-trip-log-mode="desktop"] #tripTable .trip-row-actions { display:flex; flex-wrap:wrap; gap:4px; align-items:center; }
+      html[data-trip-log-mode="desktop"] #tripTable .trip-detail-row > td {
+        display:table-cell !important; padding:0 !important; border-top:0; white-space:normal !important;
+        background:color-mix(in srgb, var(--card), var(--bg) 26%);
+      }
+      html[data-trip-log-mode="desktop"] #tripTable .trip-detail-row.hidden { display:none; }
+      html[data-trip-log-mode="desktop"] #tripTable .trip-detail-panel { padding:12px 14px 14px; border-top:1px dashed var(--line); }
+      html[data-trip-log-mode="desktop"] #tripTable .trip-detail-grid { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:8px; }
+      html[data-trip-log-mode="desktop"] #tripTable .trip-detail-item { min-width:0; padding:8px 9px; border:1px solid var(--line); border-radius:9px; background:var(--card); }
+      html[data-trip-log-mode="desktop"] #tripTable .trip-detail-item.wide { grid-column:span 2; }
+      html[data-trip-log-mode="desktop"] #tripTable .trip-detail-item.full { grid-column:1/-1; }
+      html[data-trip-log-mode="desktop"] #tripTable .trip-detail-item > span {
+        display:block; margin-bottom:4px; color:var(--muted); font-size:.68rem; font-weight:800;
+        letter-spacing:.04em; text-transform:uppercase;
+      }
+      html[data-trip-log-mode="desktop"] #tripTable .trip-detail-value { overflow-wrap:anywhere; font-size:.8rem; }
 
-      @media (orientation:landscape) and (max-height:559px) and (max-width:1179px) {
-        body { padding-bottom:64px; }
-        .bottom-nav { gap:5px; padding:6px 8px calc(6px + env(safe-area-inset-bottom)); }
-        .bottom-nav button { min-height:38px; padding:6px 8px; font-size:.74rem; }
-        #responsiveTripLog { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
-        .responsive-trip-card { min-width:0; }
-        .responsive-trip-meta { grid-template-columns:1fr 1fr; }
+      html[data-trip-log-mode="tablet"] #logSection .table-wrap,
+      html[data-trip-log-mode="phone"] #logSection .table-wrap { display:none !important; }
+      html[data-trip-log-mode="tablet"] #responsiveTripLog,
+      html[data-trip-log-mode="phone"] #responsiveTripLog { display:grid !important; gap:10px; margin-top:10px; }
+      html[data-trip-log-mode="tablet"] #logSection,
+      html[data-trip-log-mode="phone"] #logSection { overflow:visible; }
+      html[data-trip-log-mode="tablet"] .responsive-trip-card,
+      html[data-trip-log-mode="phone"] .responsive-trip-card {
+        border:1px solid var(--line); border-radius:13px; background:var(--card); overflow:hidden; min-width:0;
+      }
+      html[data-trip-log-mode="tablet"] .responsive-trip-main,
+      html[data-trip-log-mode="phone"] .responsive-trip-main { padding:12px 13px; }
+      html[data-trip-log-mode="tablet"] .responsive-trip-heading,
+      html[data-trip-log-mode="phone"] .responsive-trip-heading {
+        display:flex; align-items:flex-start; justify-content:space-between; gap:12px; min-width:0;
+      }
+      .responsive-trip-date { font-size:.84rem; color:var(--muted); font-weight:800; }
+      .responsive-trip-project { margin-top:2px; font-size:1.02rem; font-weight:900; overflow-wrap:anywhere; }
+      .responsive-trip-miles { flex:0 0 auto; font-size:1rem; font-weight:900; }
+      .responsive-trip-meta { display:flex; flex-wrap:wrap; gap:6px 14px; margin-top:8px; font-size:.88rem; min-width:0; }
+      .responsive-trip-meta strong { font-weight:850; }
+      .responsive-inspections { display:grid; gap:6px; margin-top:10px; min-width:0; }
+      .responsive-inspection {
+        padding:8px 9px; border:1px solid var(--line); border-radius:9px;
+        background:color-mix(in srgb, var(--card), var(--bg) 28%); min-width:0;
+      }
+      .responsive-inspection-label { display:block; margin-bottom:6px; font-size:.78rem; font-weight:800; overflow-wrap:anywhere; }
+      .responsive-inspection-actions, .responsive-trip-actions { display:flex; flex-wrap:wrap; gap:6px; min-width:0; }
+      .responsive-trip-actions { margin-top:10px; }
+      .responsive-trip-actions .button, .responsive-inspection-actions .button {
+        min-height:34px; padding:7px 10px; font-size:.78rem; white-space:normal;
+      }
+      .responsive-trip-details {
+        display:none; padding:11px 13px 13px; border-top:1px dashed var(--line);
+        background:color-mix(in srgb, var(--card), var(--bg) 26%);
+      }
+      .responsive-trip-card.details-open .responsive-trip-details { display:block; }
+      .responsive-detail-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+      .responsive-detail { padding:8px; border:1px solid var(--line); border-radius:9px; background:var(--card); min-width:0; }
+      .responsive-detail.full { grid-column:1/-1; }
+      .responsive-detail span { display:block; margin-bottom:3px; color:var(--muted); font-size:.68rem; font-weight:800; text-transform:uppercase; letter-spacing:.03em; }
+      .responsive-detail strong, .responsive-detail div { overflow-wrap:anywhere; font-size:.82rem; }
+
+      html[data-trip-log-mode="tablet"] #logSection { width:min(100%, 1120px); max-width:1120px; }
+      html[data-trip-log-mode="tablet"] .responsive-trip-main {
+        display:grid; grid-template-columns:minmax(150px, 190px) minmax(0,1fr) minmax(300px, 38%);
+        gap:14px; align-items:start;
+      }
+      html[data-trip-log-mode="tablet"] .responsive-trip-heading { display:block; }
+      html[data-trip-log-mode="tablet"] .responsive-trip-meta { margin-top:0; align-content:start; }
+      html[data-trip-log-mode="tablet"] .responsive-inspections { margin-top:0; }
+      html[data-trip-log-mode="tablet"] .responsive-trip-actions { grid-column:2 / -1; margin-top:0; }
+      html[data-trip-log-mode="tablet"] .responsive-inspection-actions .button { flex:1 1 130px; }
+
+      html[data-trip-log-mode="phone"] #logSection {
+        width:auto; margin-left:0; margin-right:0; transform:none; padding:14px;
+      }
+      html[data-trip-log-mode="phone"] #logSection .section-heading { align-items:flex-start; }
+      html[data-trip-log-mode="phone"] #logSection .log-toolbar { display:grid; grid-template-columns:1fr; gap:8px; }
+      html[data-trip-log-mode="phone"] #logSection .log-toolbar .button { width:100%; }
+      html[data-trip-log-mode="phone"] .responsive-detail-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      html[data-trip-log-mode="phone"] .responsive-trip-main { padding:11px; }
+      html[data-trip-log-mode="phone"] .responsive-trip-meta { display:grid; grid-template-columns:1fr 1fr; gap:5px 10px; }
+      html[data-trip-log-mode="phone"] .responsive-trip-actions .button,
+      html[data-trip-log-mode="phone"] .responsive-inspection-actions .button { flex:1 1 auto; }
+
+      @media (orientation:landscape) and (max-height:559px) {
+        html[data-trip-log-mode="phone"] body { padding-bottom:64px; }
+        html[data-trip-log-mode="phone"] .bottom-nav { gap:5px; padding:6px 8px calc(6px + env(safe-area-inset-bottom)); }
+        html[data-trip-log-mode="phone"] .bottom-nav button { min-height:38px; padding:6px 8px; font-size:.74rem; }
+        html[data-trip-log-mode="phone"] #responsiveTripLog { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
       }
     `;
     document.head.appendChild(style);
@@ -250,7 +308,9 @@
       detailItem("Maps", clonedCellContent(cells[13]), "wide"),
       detailItem("Notes", cells[14]?.textContent.trim() || "—", "full")
     );
-    panel.appendChild(grid); cell.appendChild(panel); detailRow.appendChild(cell);
+    panel.appendChild(grid);
+    cell.appendChild(panel);
+    detailRow.appendChild(cell);
     return detailRow;
   }
 
@@ -260,7 +320,10 @@
     if (!table || !tbody) return;
     const columnCount = table.tHead?.rows?.[0]?.cells?.length || 18;
     [...tbody.rows].forEach((row) => {
-      if (row.classList.contains("trip-detail-row")) { if (row.cells[0]) row.cells[0].colSpan = columnCount; return; }
+      if (row.classList.contains("trip-detail-row")) {
+        if (row.cells[0]) row.cells[0].colSpan = columnCount;
+        return;
+      }
       const editButton = row.querySelector("[data-edit-trip]");
       const tripId = editButton?.dataset.editTrip || "";
       if (!tripId) return;
@@ -268,8 +331,10 @@
       const actions = row.querySelector(".trip-row-actions");
       if (actions && !actions.querySelector("[data-trip-details]")) {
         const button = document.createElement("button");
-        button.type = "button"; button.className = "button button-secondary button-small";
-        button.dataset.tripDetails = tripId; button.textContent = "Details";
+        button.type = "button";
+        button.className = "button button-secondary button-small";
+        button.dataset.tripDetails = tripId;
+        button.textContent = "Details";
         actions.insertBefore(button, actions.firstChild);
       }
       if (!tbody.querySelector(`tr.trip-detail-row[data-trip-detail-for="${CSS.escape(tripId)}"]`)) {
@@ -347,12 +412,16 @@
     const trips = [...state.trips]
       .filter((trip) => !query || tripSearchText(trip, byTrip.get(trip.id) || []).includes(query))
       .sort((a, b) => String(b.endISO || b.date || "").localeCompare(String(a.endISO || a.date || "")));
-    container.innerHTML = trips.map((trip) => responsiveCard(trip, byTrip.get(trip.id) || [])).join("") || `<div class="empty-state">No trips match this search.</div>`;
+    container.innerHTML = trips.map((trip) => responsiveCard(trip, byTrip.get(trip.id) || [])).join("")
+      || `<div class="empty-state">No trips match this search.</div>`;
   }
 
   function clickNative(selector) {
     const target = [...document.querySelectorAll(selector)].find((node) => !node.closest("#responsiveTripLog"));
-    if (target) { target.click(); return true; }
+    if (target) {
+      target.click();
+      return true;
+    }
     return false;
   }
 
@@ -365,11 +434,17 @@
     }, delay);
   }
 
+  function cleanupResponsive() {
+    const container = document.getElementById("responsiveTripLog");
+    if (container) container.innerHTML = "";
+  }
+
   function decorate() {
     if (decorating) return;
     decorating = true;
     try {
       const current = mode();
+      setModeMarker(current);
       if (current !== lastMode) {
         if (current === "desktop") cleanupResponsive();
         else cleanupDesktop();
@@ -382,16 +457,14 @@
     }
   }
 
-  function cleanupResponsive() {
-    const container = document.getElementById("responsiveTripLog");
-    if (container) container.innerHTML = "";
-  }
-
   function install() {
     ensureStyles();
     const table = document.getElementById("tripTable");
     const tbody = table?.tBodies?.[0];
-    if (!table || !tbody) { setTimeout(install, 300); return; }
+    if (!table || !tbody) {
+      setTimeout(install, 300);
+      return;
+    }
     ensureResponsiveContainer();
     decorate();
 
@@ -401,7 +474,8 @@
     table.addEventListener("click", (event) => {
       const button = event.target.closest("[data-trip-details]");
       if (!button) return;
-      event.preventDefault(); event.stopPropagation();
+      event.preventDefault();
+      event.stopPropagation();
       const row = tbody.querySelector(`tr.trip-detail-row[data-trip-detail-for="${CSS.escape(button.dataset.tripDetails)}"]`);
       if (!row) return;
       const opening = row.classList.contains("hidden");
@@ -430,21 +504,27 @@
       for (const [responsiveAttr, nativeAttr] of mappings) {
         const button = event.target.closest(`[${responsiveAttr}]`);
         if (!button) continue;
-        const value = button.getAttribute(responsiveAttr);
-        if (!clickNative(`[${nativeAttr}="${CSS.escape(value)}"]`)) {
-          if (nativeAttr === "data-trip-open-inspection") clickNative(`[data-edit-inspection="${CSS.escape(value)}"]`);
-          else if (nativeAttr === "data-trip-export-inspection") clickNative(`[data-export-inspection="${CSS.escape(value)}"]`);
+        const identifier = button.getAttribute(responsiveAttr);
+        if (!clickNative(`[${nativeAttr}="${CSS.escape(identifier)}"]`)) {
+          if (nativeAttr === "data-trip-open-inspection") clickNative(`[data-edit-inspection="${CSS.escape(identifier)}"]`);
+          else if (nativeAttr === "data-trip-export-inspection") clickNative(`[data-export-inspection="${CSS.escape(identifier)}"]`);
         }
         return;
       }
     });
 
-    document.getElementById("searchBox")?.addEventListener("input", () => { if (mode() !== "desktop") schedule(0); });
-    document.getElementById("clearSearch")?.addEventListener("click", () => { if (mode() !== "desktop") setTimeout(() => schedule(0), 0); });
+    document.getElementById("searchBox")?.addEventListener("input", () => {
+      if (mode() !== "desktop") schedule(0);
+    });
+    document.getElementById("clearSearch")?.addEventListener("click", () => {
+      if (mode() !== "desktop") setTimeout(() => schedule(0), 0);
+    });
     window.addEventListener("resize", () => schedule(80));
     window.addEventListener("orientationchange", () => schedule(120));
     window.addEventListener("mileage:state-changed", () => schedule(50));
-    window.addEventListener("storage", (event) => { if (event.key === STATE_KEY) schedule(50); });
+    window.addEventListener("storage", (event) => {
+      if (event.key === STATE_KEY) schedule(50);
+    });
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", install, { once:true });
