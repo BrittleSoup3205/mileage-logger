@@ -1,4 +1,4 @@
-const CACHE_NAME = "mileage-logger-report-fixes-v112";
+const CACHE_NAME = "mileage-logger-report-fixes-v113";
 
 const ACTIVE_JOBS_MANAGEMENT_ASSET = "./active-jobs-management.js?v=xlsx-self-closing-cells-1";
 const ACTIVE_JOBS_ACTIVITY_EXPORT_FIX_ASSET = "./active-jobs-activity-export-fix.js?v=activity-feed-2";
@@ -14,7 +14,7 @@ const BACKUP_CHECKPOINT_SYNC_V2_ASSET = "./backup-checkpoint-sync-v2.js?v=backup
 const LAST_ODOMETER_FIX_ASSET = "./last-odometer-derived-fix.js?v=derived-odometer-1";
 const CLOUD_STATE_REFRESH_BRIDGE_ASSET = "./cloud-state-refresh-bridge.js?v=cloud-state-refresh-2";
 const TRIP_INSPECTION_LINKS_ASSET = "./trip-inspection-links.js?v=trip-inspection-links-2";
-const TRIP_LOG_DESKTOP_ASSET = "./trip-log-desktop.js?v=responsive-log-3";
+const TRIP_LOG_DESKTOP_ASSET = "./trip-log-desktop.js?v=responsive-log-4";
 const TRIP_DURATION_LOG_FIX_ASSET = "./trip-duration-log-fix.js?v=trip-duration-1";
 const WORD_PHOTO_FIT_ASSET = "./word-photo-fit-fix.js?v=word-photo-fit-2";
 const INSPECTION_ACTIVITY_RULES_ASSET = "./inspection-activity-rules.js?v=structural-pmi-1";
@@ -29,7 +29,7 @@ const PHOTO_CLOUD_ASSET = "./photo-cloud-sync.js?v=cloud-photos-2";
 const AUTO_REPORT_TEXT_ASSET = "./auto-report-text.js?v=phrase-library-1";
 const COATING_SYSTEM_LABEL_FIX_ASSET = "./coating-system-label-fix.js?v=coating-system-labels-1";
 const WESTLAKE_COATING_ASSET = "./westlake-coating-systems.js?v=westlake-pdes8001-1";
-const INDEX_ASSET = "./index.html?v=report-fixes-38";
+const INDEX_ASSET = "./index.html?v=report-fixes-39";
 
 const APP_FILES = [
   "./",
