@@ -22,7 +22,7 @@
     const height = window.innerHeight || document.documentElement.clientHeight || 0;
     if (width <= PHONE_MAX_WIDTH || (height <= PHONE_MAX_HEIGHT_LANDSCAPE && width < DESKTOP_MIN_WIDTH)) return "phone";
     if (isIPadLike()) return "tablet";
-    if (width < DESKTOP_MIN_WIDTH) return "tablet";
+    if (width <= DESKTOP_MIN_WIDTH) return "tablet";
     return "desktop";
   }
 
